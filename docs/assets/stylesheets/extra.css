@@ -1,0 +1,70 @@
+/* Academic minimalist overrides for Material for MkDocs */
+
+/* Wider content area */
+.md-grid {
+  max-width: 900px;
+}
+
+/* Lighter heading weights */
+.md-typeset h1 {
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset h2 {
+  font-weight: 400;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.3em;
+}
+
+.md-typeset h3 {
+  font-weight: 500;
+}
+
+/* Muted admonition styling */
+.md-typeset .admonition,
+.md-typeset details {
+  border-width: 1px;
+  box-shadow: none;
+}
+
+/* Refined link styling */
+.md-typeset a {
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.md-typeset a:hover {
+  border-bottom: 1px solid var(--md-accent-fg-color);
+}
+
+/* Clean table styling */
+.md-typeset table:not([class]) {
+  font-size: 0.85rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset table:not([class]) th {
+  font-weight: 500;
+  background-color: var(--md-default-bg-color);
+}
+
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  padding: 0.6em 1em;
+}
+
+/* Generous line height for readability */
+.md-typeset {
+  line-height: 1.75;
+}
+
+/* Code blocks: clean and understated */
+.md-typeset code {
+  font-size: 0.82em;
+}
+
+.md-typeset pre {
+  line-height: 1.5;
+}

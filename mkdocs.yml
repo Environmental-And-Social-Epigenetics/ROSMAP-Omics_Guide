@@ -1,0 +1,108 @@
+site_name: "EASE Multi-Omics Guide"
+site_url: "https://environmental-and-social-epigenetics.github.io/ROSMAP-Omics_Guide/"
+site_description: "Practical guides for analyzing ROSMAP multi-omics data from scratch"
+site_author: "EASE Lab"
+
+repo_name: "ROSMAP-Omics_Guide"
+repo_url: "https://github.com/Environmental-And-Social-Epigenetics/ROSMAP-Omics_Guide"
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+nav:
+  - Home: index.md
+  - About: about.md
+  - Getting Started: getting-started.md
+  - snRNA-seq:
+    - Overview: snrnaseq/index.md
+    - Scientific Background: snrnaseq/background.md
+    - Environment Setup: snrnaseq/setup.md
+    - Preprocessing:
+      - Overview: snrnaseq/preprocessing/index.md
+      - FASTQ Acquisition: snrnaseq/preprocessing/fastq-acquisition.md
+      - Cell Ranger: snrnaseq/preprocessing/cellranger.md
+      - CellBender: snrnaseq/preprocessing/cellbender.md
+      - Demuxlet: snrnaseq/preprocessing/demuxlet.md
+    - Processing:
+      - Overview: snrnaseq/processing/index.md
+      - QC Filtering: snrnaseq/processing/qc-filtering.md
+      - Doublet Removal: snrnaseq/processing/doublet-removal.md
+      - Integration and Annotation: snrnaseq/processing/integration-annotation.md
+    - Analysis:
+      - Overview: snrnaseq/analysis/index.md
+      - Differential Expression: snrnaseq/analysis/deg.md
+      - SCENIC: snrnaseq/analysis/scenic.md
+      - TF Activity: snrnaseq/analysis/tf-analysis.md
+    - Troubleshooting: snrnaseq/troubleshooting.md
+  - Lipidomics:
+    - Overview: lipidomics/index.md
+    - Scientific Background: lipidomics/background.md
+    - Environment Setup: lipidomics/setup.md
+    - Data Processing: lipidomics/data-processing.md
+    - Quality Control: lipidomics/quality-control.md
+    - Statistical Analysis: lipidomics/statistical-analysis.md
+    - Sensitivity Analysis: lipidomics/sensitivity-analysis.md
+    - Visualization: lipidomics/visualization.md
+    - Interpreting Results: lipidomics/interpreting-results.md
+  - MRI:
+    - Overview: mri/index.md
+    - Scientific Background: mri/background.md
+    - Environment Setup: mri/setup.md
+    - BIDS Construction: mri/bids-construction.md
+    - Quality Control: mri/quality-control.md
+    - fMRI Processing: mri/fmri-processing.md
+    - Anatomical Processing: mri/anatomical-processing.md
+    - DWI Processing: mri/dwi-processing.md
+    - Statistical Analysis: mri/statistical-analysis.md
+    - Postprocessing: mri/postprocessing.md
+    - Data Transfer: mri/data-transfer.md
