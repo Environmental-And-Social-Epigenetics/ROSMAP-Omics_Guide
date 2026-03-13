@@ -2,6 +2,9 @@
 
 The first preprocessing step is acquiring raw FASTQ files. The two datasets use entirely different acquisition methods: the DeJager dataset is downloaded from Synapse, while the Tsai dataset is discovered on the MIT Engaging cluster and transferred to Openmind via Globus.
 
+!!! tip "Skip FASTQ acquisition"
+    If you want to start from CellRanger or CellBender outputs instead of raw FASTQs, see [Data Access](../data-access.md) for download instructions. FASTQs can also be downloaded from the NAS backup as an alternative to Synapse or Globus.
+
 ## Overview
 
 === "DeJager"
@@ -135,7 +138,7 @@ python Scripts/verify_transfer.py
 ### Output Structure on Openmind
 
 ```
-${TSAI_FASTQS_DIR}/
+${TSAI_FASTQS}/
 +-- <projid>/
     +-- <Library_ID>/
         +-- [run_id/]           # For multi-source samples
@@ -166,8 +169,8 @@ All FASTQ-related paths are configured in `config/paths.sh`:
 
 | Variable | Description |
 |----------|-------------|
-| `DEJAGER_FASTQS` | DeJager FASTQ storage directory |
-| `TSAI_FASTQS_DIR` | Tsai FASTQ storage directory on Openmind |
+| `TSAI_FASTQS` | Tsai FASTQ storage directory (`Data/Transcriptomics/Tsai/FASTQs/`) |
+| `DEJAGER_FASTQS_DIR` | DeJager FASTQ storage directory (`Data/Transcriptomics/DeJager/FASTQs/`) |
 | `TSAI_FASTQS_CSV` | Path to `All_ROSMAP_FASTQs.csv` master index |
 
 Verify your configuration with:

@@ -155,13 +155,13 @@ All singlet-filtered h5ad files from Stage 2:
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/02_Doublet_Removed/*_singlets.h5ad
+    ${TSAI_DOUBLET_REMOVED}/*_singlets.h5ad
     ```
 
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/02_Doublet_Removed/*_singlets.h5ad
+    ${DEJAGER_DOUBLET_REMOVED}/*_singlets.h5ad
     ```
 
 ## Output
@@ -169,7 +169,7 @@ All singlet-filtered h5ad files from Stage 2:
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/03_Integrated/
+    ${TSAI_INTEGRATED}/
     +-- tsai_integrated.h5ad              # After Harmony, before annotation
     +-- tsai_annotated.h5ad               # Final annotated object
     +-- cluster_annotation_rankings.csv   # Full ORA results
@@ -180,7 +180,7 @@ All singlet-filtered h5ad files from Stage 2:
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/03_Integrated/
+    ${DEJAGER_INTEGRATED}/
     +-- dejager_integrated.h5ad
     +-- dejager_annotated.h5ad
     +-- cluster_annotation_rankings.csv

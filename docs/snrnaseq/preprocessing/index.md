@@ -2,6 +2,9 @@
 
 Preprocessing converts raw FASTQ sequencing files into ambient RNA-corrected count matrices suitable for downstream quality control and analysis. This phase handles data acquisition, read alignment, ambient RNA removal, and (for the DeJager dataset) genotype-based sample demultiplexing.
 
+!!! tip "Already have preprocessed data?"
+    If you have CellRanger or CellBender outputs, you can skip some or all preprocessing steps. See [Data Access](../data-access.md) for download instructions and choosing your entry point.
+
 ## Workflow
 
 ```mermaid

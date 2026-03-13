@@ -55,12 +55,15 @@ The pipeline produces an annotated AnnData object (e.g., `tsai_annotated.h5ad`) 
 
 This object serves as the input for all downstream analyses.
 
+You do not need to run every phase. If you already have preprocessed data (e.g., CellBender outputs or the annotated H5ad), you can enter the pipeline at any stage. See [Data Access](data-access.md) for how to download data and choose your starting point.
+
 ## Pipeline Sections
 
 | Page | Description |
 |------|-------------|
 | [Scientific Background](background.md) | ROSMAP, DLPFC, snRNA-seq rationale, and justification for each pipeline method |
 | [Environment Setup](setup.md) | Repository clone, path configuration, software installation, conda environments |
+| [Data Access](data-access.md) | Data directory layout, transfer methods, and choosing your pipeline entry point |
 | [Preprocessing Overview](preprocessing/index.md) | FASTQ-to-CellBender workflow and dataset-specific differences |
 | [FASTQ Acquisition](preprocessing/fastq-acquisition.md) | Synapse download (DeJager) and Engaging cluster discovery (Tsai) |
 | [Cell Ranger](preprocessing/cellranger.md) | Read alignment and gene expression counting |

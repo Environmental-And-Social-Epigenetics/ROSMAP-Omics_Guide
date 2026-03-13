@@ -39,8 +39,8 @@ Analysis/
 
 All three analysis types require:
 
-- Annotated AnnData objects from Stage 3 of the processing pipeline, with `cell_type` and `projid` columns in `obs`
-- Clinical phenotype data from the `Data/Phenotypes/` directory (referenced via `${PHENOTYPE_DIR}` in `config/paths.sh`)
+- Annotated AnnData objects from Stage 3 of the processing pipeline, with `cell_type` and `projid` columns in `obs`. These can be downloaded from the NAS without running the pipeline — see [Data Access](../data-access.md) (Entry Point D).
+- Clinical phenotype data from the `Data/Phenotypes/` directory (referenced via `${PHENOTYPE_DIR}` in `config/paths.sh`). These CSVs are tracked in git and available immediately after cloning.
 
 ## Adding a New Phenotype
 

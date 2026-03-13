@@ -34,6 +34,8 @@ ROSMAP data is distributed through the [AD Knowledge Portal on Synapse](https://
 
 Not all guides require Synapse access. The Tsai snRNA-seq data is transferred via Globus from the MIT Engaging cluster, and MRI data may already reside on your institution's filesystem.
 
+The snRNA-seq repository includes a `Data_Access/` directory with transfer scripts for multiple methods (NAS/SFTP, Globus, Synapse). Users can download data at any processing stage — from raw FASTQs through the final annotated H5ad — without needing to run the full pipeline. See the [snRNA-seq Data Access](snrnaseq/data-access.md) page for details.
+
 ## Repository Structure
 
 Each analysis pipeline lives in its own Git repository. Clone the repository for the analysis you want to run:

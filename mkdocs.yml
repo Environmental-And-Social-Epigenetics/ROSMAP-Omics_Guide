@@ -67,6 +67,7 @@ nav:
     - Overview: snrnaseq/index.md
     - Scientific Background: snrnaseq/background.md
     - Environment Setup: snrnaseq/setup.md
+    - Data Access: snrnaseq/data-access.md
     - Preprocessing:
       - Overview: snrnaseq/preprocessing/index.md
       - FASTQ Acquisition: snrnaseq/preprocessing/fastq-acquisition.md

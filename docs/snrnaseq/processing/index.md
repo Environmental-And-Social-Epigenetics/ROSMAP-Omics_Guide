@@ -2,6 +2,9 @@
 
 The processing phase takes ambient RNA-corrected count matrices from preprocessing and produces a single, integrated, cell type-annotated AnnData object. It consists of three stages, each performing a distinct task: quality control filtering, doublet removal, and integration with annotation.
 
+!!! tip "Starting from CellBender output?"
+    If you downloaded CellBender outputs via [Data Access](../data-access.md), you can start the processing pipeline directly. Ensure the data is in `Data/Transcriptomics/{dataset}/Cellbender_Output/` and your conda environments are set up.
+
 Both datasets (DeJager and Tsai) use an identical three-stage pipeline with the same methods and parameters. The only differences are dataset-specific input paths and, for DeJager, an additional patient ID assignment step during Stage 1.
 
 ## Pipeline Architecture
@@ -97,7 +100,7 @@ sbatch --array=1-$(python 01_qc_filter.py --list-samples | wc -l) 01_qc_filter.s
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/
+    Data/Transcriptomics/Tsai/Processing_Outputs/   # $TSAI_PROCESSING
     +-- 01_QC_Filtered/         # Per-sample QC-filtered h5ad files + qc_summary.csv
     +-- 02_Doublet_Removed/     # Per-sample singlet-only h5ad files + doublet_summary.csv
     +-- 03_Integrated/          # Integrated and annotated h5ad files + figures/
@@ -107,12 +110,14 @@ sbatch --array=1-$(python 01_qc_filter.py --list-samples | wc -l) 01_qc_filter.s
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/
+    Data/Transcriptomics/DeJager/Processing_Outputs/   # $DEJAGER_PROCESSING
     +-- 01_QC_Filtered/         # Per-library QC-filtered h5ad files + qc_summary.csv
     +-- 02_Doublet_Removed/     # Per-library singlet-only h5ad files + doublet_summary.csv
     +-- 03_Integrated/          # Integrated and annotated h5ad files + figures/
     +-- Logs/                   # SLURM stdout and stderr
     ```
+
+Processing outputs can also be downloaded from the NAS instead of regenerated. See [Data Access](../data-access.md) for download instructions.
 
 ## SLURM Resource Requirements
 

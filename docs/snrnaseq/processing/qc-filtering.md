@@ -18,13 +18,13 @@ The input is the CellBender-filtered count matrix for each sample:
 === "Tsai"
 
     ```
-    ${TSAI_PREPROCESSED}/{projid}/cellbender_output_filtered.h5
+    ${TSAI_CELLBENDER}/{projid}/cellbender_output_filtered.h5
     ```
 
 === "DeJager"
 
     ```
-    ${DEJAGER_PREPROCESSED}/{library}/processed_feature_bc_matrix_filtered.h5
+    ${DEJAGER_CELLBENDER}/{library}/processed_feature_bc_matrix_filtered.h5
     ```
 
 ## QC Metrics
@@ -106,13 +106,13 @@ Each sample produces a QC-filtered AnnData file:
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/01_QC_Filtered/{projid}_qc.h5ad
+    ${TSAI_QC_FILTERED}/{projid}_qc.h5ad
     ```
 
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/01_QC_Filtered/{library}_qc.h5ad
+    ${DEJAGER_QC_FILTERED}/{library}_qc.h5ad
     ```
 
 ### QC Summary

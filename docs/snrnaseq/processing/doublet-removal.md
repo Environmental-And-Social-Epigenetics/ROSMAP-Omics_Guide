@@ -43,13 +43,13 @@ QC-filtered AnnData files from Stage 1:
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/01_QC_Filtered/{projid}_qc.h5ad
+    ${TSAI_QC_FILTERED}/{projid}_qc.h5ad
     ```
 
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/01_QC_Filtered/{library}_qc.h5ad
+    ${DEJAGER_QC_FILTERED}/{library}_qc.h5ad
     ```
 
 ## Running Stage 2
@@ -82,13 +82,13 @@ Each sample produces a singlet-only AnnData file:
 === "Tsai"
 
     ```
-    Tsai_Data/Processing_Outputs/02_Doublet_Removed/{projid}_singlets.h5ad
+    ${TSAI_DOUBLET_REMOVED}/{projid}_singlets.h5ad
     ```
 
 === "DeJager"
 
     ```
-    DeJager_Data/Processing_Outputs/02_Doublet_Removed/{library}_singlets.h5ad
+    ${DEJAGER_DOUBLET_REMOVED}/{library}_singlets.h5ad
     ```
 
 ### Doublet Summary

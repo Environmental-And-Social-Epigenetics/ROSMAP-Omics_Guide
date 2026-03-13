@@ -55,8 +55,8 @@ cellranger count \
         --r1-length 26 \
         --transcriptome ${CELLRANGER_REF} \
         --sample <SAMPLE_ID> \
-        --fastqs ${TSAI_FASTQS_DIR}/<projid>/ \
-        --output-dir=${TSAI_CELLRANGER_OUTPUT}/<projid>
+        --fastqs ${TSAI_FASTQS}/<projid>/ \
+        --output-dir=${TSAI_CELLRANGER}/<projid>
     ```
 
     BAM creation is disabled (`--create-bam false`) because patient identity is known from metadata and no demultiplexing is needed. This saves substantial disk space and processing time.

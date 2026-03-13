@@ -213,4 +213,5 @@ The following external data is not included in the repository and must be obtain
 | WGS VCF | Demuxlet (DeJager) | ROSMAP WGS data, processed and lifted to GRCh38 |
 | Reference genome | Cell Ranger | 10x Genomics (`refdata-gex-GRCh38-2020-A`) |
 | Synapse credentials | DeJager FASTQ download | [synapse.org](https://www.synapse.org) account with access to syn21438684 |
-| Clinical phenotype data | Downstream analysis | ROSMAP data request |
+| Clinical phenotype data | Downstream analysis | Tracked in `Data/Phenotypes/` (available immediately after cloning) |
+| NAS credentials | Data download via `Data_Access/` scripts | Password file at `~/.smb_tsailabnas` (see [Data Access](data-access.md)) |

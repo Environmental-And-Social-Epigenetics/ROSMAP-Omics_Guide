@@ -19,7 +19,7 @@ cd /your/workspace
 git clone <repo-url> ROSMAP-SingleNucleusRNAseq
 ```
 
-The pipeline expects large data directories (e.g., `Tsai_Data/`) to reside alongside the repository in the same parent directory (`/your/workspace/`). The repository itself contains only code, configuration, and small reference files; all large data is stored externally.
+After cloning, the `Data/` directory inside the repo contains only small tracked files (phenotype CSVs). Large data (FASTQs, CellRanger output, CellBender output, processing outputs) is populated into `Data/Transcriptomics/` using scripts in `Data_Access/`. See [Data Access](data-access.md) for details on what to download based on your starting point.
 
 ## Step 2: Configure Paths
 
@@ -177,6 +177,8 @@ bash config/preflight.sh
 
 This validates that all pipeline prerequisites (conda environments, input files, references) are in place.
 
+After verifying your setup, see [Data Access and Entry Points](data-access.md) to populate the `Data/` directory for your chosen starting point.
+
 To confirm the processing pipeline can discover samples:
 
 ```bash
@@ -201,19 +203,28 @@ After setup is complete, the workspace should have this structure:
 
 ```
 /your/workspace/
-+-- ROSMAP-SingleNucleusRNAseq/     # The repository
-|   +-- config/paths.sh
-|   +-- Preprocessing/
-|   +-- Processing/
-|   +-- Analysis/
-+-- Tsai_Data/                      # Large data (outside repo)
-    +-- FASTQs/
-    +-- Cellbender_Outputs/
-    +-- Processing_Outputs/
-        +-- 01_QC_Filtered/
-        +-- 02_Doublet_Removed/
-        +-- 03_Integrated/
-        +-- Logs/
++-- ROSMAP-SingleNucleusRNAseq/              # The repository
+    +-- config/paths.sh
+    +-- Preprocessing/
+    +-- Processing/
+    +-- Analysis/
+    +-- Data/                                # Canonical data location
+    |   +-- Phenotypes/                      # Git-tracked (available immediately)
+    |   +-- Transcriptomics/
+    |       +-- Tsai/
+    |       |   +-- FASTQs/                  # Populated via Data_Access/ scripts
+    |       |   +-- Cellranger_Output/
+    |       |   +-- Cellbender_Output/
+    |       |   +-- Processing_Outputs/
+    |       +-- DeJager/
+    |           +-- FASTQs/
+    |           +-- Cellranger_Output/
+    |           +-- Cellbender_Output/
+    |           +-- Processing_Outputs/
+    +-- Data_Access/                         # Transfer scripts for populating Data/
+        +-- Transcriptomics/
+            +-- Tsai_Server/                 # NAS (SFTP) transfers
+            +-- Engaging-Openmind_Transfer/  # Globus transfers
 ```
 
-All large data (FASTQs, Cell Ranger outputs, CellBender outputs, processing outputs) lives outside the repository to keep the repo lightweight and to accommodate storage on different filesystems.
+The `Data/` directory inside the repository is the canonical location for all pipeline data. Phenotype CSVs are tracked in git and available immediately after cloning. All transcriptomics data (FASTQs, count matrices, processing outputs) must be populated using the scripts in `Data_Access/` — see [Data Access](data-access.md) for instructions.

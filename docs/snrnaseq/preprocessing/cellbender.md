@@ -41,7 +41,7 @@ cellbender remove-background \
         --cuda \
         --input ${DEJAGER_COUNTS}/${LIBRARY_ID}/outs/raw_feature_bc_matrix.h5 \
         --fpr 0 \
-        --output ${DEJAGER_PREPROCESSED}/${LIBRARY_ID}/processed_feature_bc_matrix.h5
+        --output ${DEJAGER_CELLBENDER}/${LIBRARY_ID}/processed_feature_bc_matrix.h5
     ```
 
     | Parameter | Value |
@@ -53,12 +53,12 @@ cellbender remove-background \
     ```bash
     cellbender remove-background \
         --cuda \
-        --input ${TSAI_CELLRANGER_OUTPUT}/<projid>/outs/raw_feature_bc_matrix.h5 \
+        --input ${TSAI_CELLRANGER}/<projid>/outs/raw_feature_bc_matrix.h5 \
         --expected-cells 5000 \
         --total-droplets-included 20000 \
         --fpr 0.01 \
         --epochs 150 \
-        --output ${TSAI_CELLBENDER_SCRATCH}/<projid>/cellbender_output.h5
+        --output ${TSAI_CELLBENDER}/<projid>/cellbender_output.h5
     ```
 
     | Parameter | Value | Description |
@@ -147,7 +147,7 @@ CellBender produces corrected count matrices:
 === "DeJager"
 
     ```
-    ${DEJAGER_PREPROCESSED}/${LIBRARY_ID}/
+    ${DEJAGER_CELLBENDER}/${LIBRARY_ID}/
     +-- processed_feature_bc_matrix.h5            # Corrected counts
     +-- processed_feature_bc_matrix_filtered.h5   # Filtered version
     +-- processed_feature_bc_matrix.pdf           # QC diagnostic plots
@@ -156,7 +156,7 @@ CellBender produces corrected count matrices:
 === "Tsai"
 
     ```
-    ${TSAI_PREPROCESSED}/<projid>/
+    ${TSAI_CELLBENDER}/<projid>/
     +-- cellbender_output.h5                      # Corrected counts
     +-- cellbender_output_filtered.h5             # Filtered version
     ```
@@ -170,7 +170,7 @@ After CellBender completes, verify the output:
 1. **Check that output files exist** and are non-empty:
 
     ```bash
-    ls -lh ${TSAI_PREPROCESSED}/<projid>/cellbender_output_filtered.h5
+    ls -lh ${TSAI_CELLBENDER}/<projid>/cellbender_output_filtered.h5
     ```
 
 2. **Inspect the QC plots** (DeJager): The PDF output includes diagnostic plots showing the model's cell/empty droplet classification and the estimated ambient profile.

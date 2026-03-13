@@ -104,7 +104,7 @@ Demuxlet requires outputs from both Cell Ranger and CellBender:
 | Input | Source | Path |
 |-------|--------|------|
 | Possorted BAM | Cell Ranger (Step 02) | `${DEJAGER_COUNTS}/{LibID}/outs/possorted_genome_bam.bam` |
-| Cell barcodes | CellBender (Step 03) | `${DEJAGER_PREPROCESSED}/{LibID}/processed_feature_bc_matrix_cell_barcodes.csv` |
+| Cell barcodes | CellBender (Step 03) | `${DEJAGER_CELLBENDER}/{LibID}/processed_feature_bc_matrix_cell_barcodes.csv` |
 | SNP VCF | WGS data (external) | `${DEJAGER_DEMUX_VCF}` |
 | Patient IDs | WGS metadata (external) | `${DEJAGER_PATIENT_IDS_DIR}/individPat{LibID}.txt` |
 
