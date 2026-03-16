@@ -7,27 +7,30 @@ This section documents the ROSMAP single nucleus RNA sequencing (snRNA-seq) pipe
 The pipeline is organized into three sequential phases. Preprocessing converts raw sequencing reads into ambient RNA-corrected count matrices. Processing applies quality control, doublet removal, and batch-corrected integration to produce a single annotated dataset. Analysis then uses that dataset for differential expression, regulatory network inference, metabolic pathway analysis, and gene set enrichment.
 
 ```mermaid
-graph LR
-    A[Phase 1: Preprocessing] --> B[Phase 2: Processing]
-    B --> C[Phase 3: Analysis]
-
-    subgraph Phase 1
+graph TD
+    subgraph Phase1["Phase 1: Preprocessing"]
         A1[FASTQ Acquisition] --> A2[Cell Ranger Alignment]
         A2 --> A3[CellBender Ambient RNA Removal]
-        A3 --> A4[Demuxlet, DeJager only]
+        A3 --> A4["Demuxlet (DeJager only)"]
     end
 
-    subgraph Phase 2
-        B1[Stage 1: QC Filtering] --> B2[Stage 2: Doublet Removal]
-        B2 --> B3[Stage 3: Integration and Annotation]
+    subgraph Phase2["Phase 2: Processing"]
+        B1[QC Filtering] --> B2[Doublet Removal]
+        B2 --> B3[Integration & Annotation]
     end
 
-    subgraph Phase 3
+    subgraph Phase3["Phase 3: Analysis"]
         C1[Differential Expression]
         C2[SCENIC Regulatory Networks]
-        C3[Metabolic Analysis, COMPASS]
+        C3["Metabolic Analysis (COMPASS)"]
         C4[Gene Set Enrichment]
     end
+
+    A4 --> B1
+    B3 --> C1
+    B3 --> C2
+    B3 --> C3
+    B3 --> C4
 ```
 
 ## Datasets
