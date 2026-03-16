@@ -49,13 +49,13 @@ CellBender uses a deep generative model to distinguish true cell-associated RNA 
 
 The pipeline uses `--fpr 0` (or `0.01`) for a stringent false positive rate, aggressively removing ambient signal at the cost of potentially removing a small amount of true signal. This tradeoff is appropriate for downstream analyses that depend on clean cell type separation.
 
-## Why MAD-Based QC Filtering?
+## Why Percentile-Based QC Filtering?
 
-After ambient RNA removal, individual cells must be filtered to remove low-quality observations: damaged cells, empty droplets that passed CellBender, and other technical artifacts. The pipeline uses Median Absolute Deviation (MAD) as a robust measure of variability for this filtering.
+After ambient RNA removal, individual cells must be filtered to remove low-quality observations: damaged cells, empty droplets that passed CellBender, and other technical artifacts. The pipeline uses percentile-based thresholds for this filtering, which are more robust than standard deviation or MAD-based approaches for the long-tailed distributions common in single-cell data.
 
-### Why MAD instead of standard deviation?
+### Why percentiles instead of MAD?
 
-MAD is less sensitive to extreme outliers than the standard deviation, making it more appropriate for distributions with long tails, which are common in single-cell data. A few cells with extremely high counts (potential doublets or multiplets) would inflate the standard deviation and mask genuinely outlying low-quality cells.
+Percentile thresholds provide stable cutoffs regardless of distribution shape, avoiding the assumption of approximate normality that MAD-based methods require. In single-cell data, QC metric distributions often have heavy tails (from doublets, debris, or highly variable cell types), which can distort MAD estimates. Fixed percentile thresholds are simpler to interpret and reproduce across datasets.
 
 ### What is filtered?
 
@@ -65,10 +65,9 @@ Cells with QC metrics falling beyond defined thresholds are removed:
 |--------|-----------|-----------|
 | `log1p_total_counts` | Below 4.5th or above 96th percentile | Removes cells with abnormally high or low total RNA counts |
 | `log1p_n_genes_by_counts` | Below 5th percentile | Removes cells expressing too few genes (likely empty or damaged) |
-| `pct_counts_in_top_20_genes` | 4 MADs from median | Removes cells dominated by a handful of genes |
-| `pct_counts_mt` | 3 MADs from median, or above 7.5% | Removes cells with high mitochondrial content, a marker of cell damage |
+| `pct_counts_mt` | Above 10% | Removes cells with high mitochondrial content, a marker of cell damage |
 
-The 4-MAD threshold for counts and gene metrics is relatively permissive, retaining genuine biological variation. The stricter 3-MAD threshold combined with a 7.5% hard cap for mitochondrial percentage reflects the stronger and more consistent association between mitochondrial content and cell death or damage.
+The 4.5th/96th percentile range for total counts is relatively permissive, retaining genuine biological variation while removing extreme outliers at both ends. The 10% hard cap for mitochondrial percentage reflects the consistent association between high mitochondrial content and cell death or damage in postmortem brain tissue.
 
 ## Why Harmony for Batch Correction?
 
@@ -123,6 +122,7 @@ The final output is an annotated AnnData object (e.g., `tsai_annotated.h5ad`) co
 
 This object is the starting point for downstream analysis:
 
-- **Differential expression (DEG).** Compare gene expression between conditions (AD vs. control, resilient vs. non-resilient) within specific cell types using pseudobulk methods (DESeq2, edgeR).
-- **SCENIC.** Infer gene regulatory networks and identify active transcription factor regulons per cell type.
-- **Transcription factor analysis.** Characterize TF activity differences across disease states using DoRothEA.
+- **Differential expression (DEG).** Compare gene expression between conditions within specific cell types using NEBULA mixed models (ACE phenotype) or pseudobulk methods such as DESeq2 (SocIsl phenotype).
+- **SCENIC.** Infer gene regulatory networks and identify active transcription factor regulons per cell type using pySCENIC.
+- **Metabolic analysis.** Estimate metabolic flux differences between phenotype groups at the single-cell level using COMPASS.
+- **Gene set enrichment.** Map differentially expressed genes to known biological pathways using WebGestaltR.

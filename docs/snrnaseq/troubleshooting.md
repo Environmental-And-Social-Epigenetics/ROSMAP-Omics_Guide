@@ -17,7 +17,12 @@ The pipeline includes several resource-intensive steps. The table below summariz
 | Stage 1: QC Filtering | 4 | 32 GB | 12h | None | Array job, per sample |
 | Stage 2: Doublet Removal | 4 | 32 GB | 12h | None | Array job, per sample |
 | Stage 3: Integration | 32 | 500 GB | 48h | None | Single job, all samples |
-| SCENIC (Analysis) | 32+ | 256 GB+ | 24-48h | None | Per analysis |
+| DEG Preprocessing (NEBULA) | 8 | 200 GB | 12h | None | Single job, run once per pipeline |
+| DEG per job (NEBULA) | 45 | 100 GB | 5h | None | 816 jobs total for ACE |
+| DEG (DESeq2, per cell type) | 8 | 64 GB | 1-2h | None | SocIsl |
+| SCENIC (Analysis) | 32+ | 256 GB+ | 24-48h | None | Per cell type |
+| COMPASS (Analysis) | 40 | 600 GB | 24h | None | Per cell type per sex; requires CPLEX |
+| GSEA (Analysis) | 4 | 16 GB | 1-2h | None | Per analysis |
 
 ## Scratch Space Issues
 
@@ -204,6 +209,52 @@ bash config/preflight.sh
 
 **Reference genome not found.** Set `CELLRANGER_REF` to the directory containing the extracted `refdata-gex-GRCh38-2020-A` reference (not the tarball).
 
+## Analysis Pipeline Issues
+
+### NEBULA Convergence Issues
+
+**Symptom.** NEBULA returns warnings about non-convergence or produces NA p-values for some genes.
+
+**Cause.** Typically occurs with cell types that have very few cells or subjects in a specific stratum (e.g., rare inhibitory neuron subtypes in a sex-stratified analysis).
+
+**Fix.** The pipeline skips analyses with fewer than 50 cells or 10 subjects automatically. For borderline cases, check the convergence field in the NEBULA output object (`re$convergence`). Non-converged results should be interpreted with caution.
+
+### NEBULA Environment Missing
+
+**Symptom.** `run_nebula.sh` fails with "Could not find conda environment: nebulaAnalysis7".
+
+**Fix.** The NEBULA environment is not created by `install_envs.sh --analysis`. Create it manually:
+
+```bash
+conda create -n nebulaAnalysis7 -c conda-forge r-base>=4.2
+conda activate nebulaAnalysis7
+R -e 'install.packages("nebula"); BiocManager::install(c("edgeR", "zellkonverter", "SingleCellExperiment"))'
+R -e 'install.packages(c("dplyr", "ggplot2", "ggrepel"))'
+```
+
+### COMPASS CPLEX License Error
+
+**Symptom.** COMPASS fails with an error about missing CPLEX or license file.
+
+**Fix.** COMPASS requires the IBM CPLEX solver with a valid license. Obtain an academic license from [https://www.ibm.com/academic/](https://www.ibm.com/academic/) and set the environment variables before running:
+
+```bash
+export CPLEX_STUDIO_DIR=/path/to/cplex
+export PATH=$CPLEX_STUDIO_DIR/bin:$PATH
+```
+
+### SCENIC Motif Database Not Found
+
+**Symptom.** pySCENIC fails with errors about missing `.feather` ranking files or motif annotation table.
+
+**Fix.** The motif databases (~3.5 GB total) must be downloaded separately from [https://resources.aertslab.org/cistarget/](https://resources.aertslab.org/cistarget/). Update the file paths in the SCENIC scripts to point to the downloaded databases.
+
+### SCENIC Out of Memory
+
+**Symptom.** The GRNBoost2 step is killed by the OOM killer during SCENIC.
+
+**Fix.** GRNBoost2 is the most memory-intensive step. Request at least 256 GB of RAM. For large cell types (>50,000 cells), consider increasing to 512 GB or using the micropooling step to reduce the effective number of observations.
+
 ## External Data Dependencies
 
 The following external data is not included in the repository and must be obtained separately:
@@ -215,3 +266,5 @@ The following external data is not included in the repository and must be obtain
 | Synapse credentials | DeJager FASTQ download | [synapse.org](https://www.synapse.org) account with access to syn21438684 |
 | Clinical phenotype data | Downstream analysis | Tracked in `Data/Phenotypes/` (available immediately after cloning) |
 | NAS credentials | Data download via `Data_Access/` scripts | Password file at `~/.smb_tsailabnas` (see [Data Access](data-access.md)) |
+| SCENIC motif databases | SCENIC analysis | [resources.aertslab.org/cistarget](https://resources.aertslab.org/cistarget/) (~3.5 GB) |
+| IBM CPLEX license | COMPASS analysis | [ibm.com/academic](https://www.ibm.com/academic/) (academic license) |

@@ -4,7 +4,7 @@ This section documents the ROSMAP single nucleus RNA sequencing (snRNA-seq) pipe
 
 ## Pipeline Architecture
 
-The pipeline is organized into three sequential phases. Preprocessing converts raw sequencing reads into ambient RNA-corrected count matrices. Processing applies quality control, doublet removal, and batch-corrected integration to produce a single annotated dataset. Analysis then uses that dataset for differential expression, transcription factor inference, and regulatory network reconstruction.
+The pipeline is organized into three sequential phases. Preprocessing converts raw sequencing reads into ambient RNA-corrected count matrices. Processing applies quality control, doublet removal, and batch-corrected integration to produce a single annotated dataset. Analysis then uses that dataset for differential expression, regulatory network inference, metabolic pathway analysis, and gene set enrichment.
 
 ```mermaid
 graph LR
@@ -25,7 +25,8 @@ graph LR
     subgraph Phase 3
         C1[Differential Expression]
         C2[SCENIC Regulatory Networks]
-        C3[Transcription Factor Analysis]
+        C3[Metabolic Analysis, COMPASS]
+        C4[Gene Set Enrichment]
     end
 ```
 
@@ -70,9 +71,14 @@ You do not need to run every phase. If you already have preprocessed data (e.g.,
 | [CellBender](preprocessing/cellbender.md) | GPU-accelerated ambient RNA removal |
 | [Demuxlet](preprocessing/demuxlet.md) | WGS-based genotype demultiplexing (DeJager only) |
 | [Processing Overview](processing/index.md) | Three-stage pipeline architecture and submission |
-| [QC Filtering](processing/qc-filtering.md) | MAD-based quality control and percentile thresholds |
+| [QC Filtering](processing/qc-filtering.md) | Percentile-based quality control thresholds |
 | [Doublet Removal](processing/doublet-removal.md) | scDblFinder-based computational doublet detection |
 | [Integration and Annotation](processing/integration-annotation.md) | Normalization, HVG selection, PCA, Harmony, clustering, and cell type annotation |
+| [Analysis Overview](analysis/index.md) | Analysis types, phenotype status, environments, and directory structure |
+| [Differential Expression](analysis/deg.md) | NEBULA (ACE) and DESeq2 (SocIsl) DEG pipelines |
+| [SCENIC](analysis/scenic.md) | pySCENIC regulatory network inference (SocIsl) |
+| [TF and Metabolic Analysis](analysis/tf-analysis.md) | COMPASS metabolic flux analysis (SocIsl) |
+| [Gene Set Enrichment](analysis/gsea.md) | WebGestaltR pathway enrichment (SocIsl) |
 | [Troubleshooting](troubleshooting.md) | Common errors, resource requirements, and known issues |
 
 ## Software Requirements
@@ -82,6 +88,8 @@ You do not need to run every phase. If you already have preprocessed data (e.g.,
 | Cell Ranger | v8.0.0 | Read alignment and counting |
 | CellBender | Latest | Ambient RNA removal (GPU required) |
 | Python | 3.10+ | QC filtering, integration, annotation (scanpy, anndata, harmonypy, decoupler) |
-| R | 4.2+ | Doublet removal (scDblFinder, zellkonverter, BiocParallel) |
+| R | 4.2+ | Doublet removal (scDblFinder), DEG analysis (NEBULA, DESeq2, edgeR), GSEA (WebGestaltR) |
+| pySCENIC | 0.12+ | Gene regulatory network inference (SCENIC analysis) |
+| COMPASS | 0.9+ | Metabolic flux estimation (requires IBM CPLEX) |
 | Singularity | 3.10+ | Demuxafy container for Demuxlet (DeJager only) |
 | SLURM | Any | Job scheduling and resource management |

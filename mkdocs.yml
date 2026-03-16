@@ -83,7 +83,8 @@ nav:
       - Overview: snrnaseq/analysis/index.md
       - Differential Expression: snrnaseq/analysis/deg.md
       - SCENIC: snrnaseq/analysis/scenic.md
-      - TF Activity: snrnaseq/analysis/tf-analysis.md
+      - TF and Metabolic Analysis: snrnaseq/analysis/tf-analysis.md
+      - Gene Set Enrichment: snrnaseq/analysis/gsea.md
     - Troubleshooting: snrnaseq/troubleshooting.md
   - Lipidomics:
     - Overview: lipidomics/index.md

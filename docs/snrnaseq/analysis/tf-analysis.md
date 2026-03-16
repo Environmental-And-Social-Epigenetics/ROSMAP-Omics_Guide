@@ -1,53 +1,106 @@
-# Transcription Factor Activity Analysis
+# Transcription Factor and Metabolic Analysis
 
-Transcription factor (TF) activity analysis infers the activity of transcription factors from the expression levels of their known target genes. Rather than measuring TF expression directly (which is often low and noisy in single-cell data), this approach uses the collective expression of a TF's downstream targets as a proxy for its regulatory activity.
+The `TF/` directory in the repository houses metabolic pathway analysis using COMPASS, which characterizes metabolic flux differences between phenotype groups at the single-cell level.
 
-## Method: DoRothEA
+!!! info "Implementation status"
+    COMPASS metabolic analysis is implemented for the **SocIsl (Social Isolation)** phenotype with scripts and results for both Tsai and DeJager datasets. ACE and Resilient phenotypes have placeholder directories only. DoRothEA-based transcription factor activity analysis is planned but not yet implemented.
 
-The pipeline uses DoRothEA, a curated resource of TF-target interactions compiled from multiple evidence sources (ChIP-seq, TF binding motifs, gene expression, and literature). Each TF-target interaction is assigned a confidence level from A (highest) to E (lowest), based on the number and type of supporting evidence.
+## COMPASS Metabolic Analysis
 
-For each cell, DoRothEA computes a TF activity score by aggregating the expression of the TF's target genes using a statistical test (typically VIPER or a weighted mean). The result is a cells-by-TFs activity matrix that can be analyzed in the same way as a gene expression matrix.
+### Method
 
-## Relationship to DEG and SCENIC
+COMPASS (Characterizing Of Metabolic PAtterns at the Single cell Scale) estimates metabolic flux through known biochemical reactions for each cell. It uses single-cell gene expression data to infer the activity of metabolic reactions and pathways, then identifies reactions with significantly different flux between phenotype groups.
 
-TF analysis is complementary to the other two analysis types:
+The analysis pipeline has two phases:
 
-- **DEG** identifies which genes change expression, but does not explain why.
-- **TF analysis** identifies which transcription factors are likely driving those expression changes, based on curated prior knowledge.
-- **SCENIC** discovers regulatory networks de novo from the data, without relying on prior knowledge databases.
+1. **Flux estimation** — COMPASS estimates per-cell metabolic flux scores using an optimization-based approach that requires the IBM CPLEX solver
+2. **Statistical testing** — Wilcoxon rank-sum tests compare reaction activity between phenotype groups (e.g., socially isolated vs. non-isolated), with FDR correction and Cohen's d effect sizes
 
-TF analysis is faster and more interpretable than SCENIC, but is limited to transcription factors and interactions present in the DoRothEA database.
+### Scripts
 
-## Running the Analysis
+Scripts are in `Analysis/SocIsl/TF/Tsai/`:
 
-Navigate to the appropriate phenotype and dataset directory:
+| Script | Purpose |
+|--------|---------|
+| `compassRunAstTsai.sh` | Main COMPASS SLURM wrapper for astrocytes |
+| `compassRun{CellType}{Sex}.sh` | Per-cell-type, per-sex COMPASS wrappers (20+ scripts) |
+| `compass_analysis.py` | Post-COMPASS statistical analysis |
+
+### COMPASS Execution
+
+Each COMPASS run processes one cell type for one sex:
 
 ```bash
-cd Analysis/<Phenotype>/TF/<Dataset>/
+compass \
+    --data matrix500_{sex}_{CellType}.tsv \
+    --num-processes 40 \
+    --species homo_sapiens \
+    --output-dir CompassP{Sex}{CellType}New
 ```
 
-Follow the phenotype-specific README for the exact commands and configuration.
+The input TSV is a preprocessed gene expression matrix for the specified cell type and sex subset.
 
-## Inputs
+### Post-COMPASS Analysis (`compass_analysis.py`)
 
-| File | Source |
-|------|--------|
-| Annotated AnnData (`.h5ad`) | `Processing/<Dataset>/Pipeline/` output from Stage 3 |
-| DoRothEA regulon database | Included in the `dorothea` Python or R package |
-| Clinical phenotype CSV | `Data/Phenotypes/` |
+After COMPASS completes, the Python analysis script:
 
-## Outputs
+1. Loads COMPASS penalty scores and converts to reaction consistency scores (log scale)
+2. Performs Wilcoxon rank-sum tests per metabolic reaction between isolated and non-isolated groups
+3. Computes Cohen's d effect sizes
+4. Applies FDR correction
+5. Clusters correlated reactions into meta-reactions using hierarchical clustering
+6. Maps results to named metabolic pathways (PGM, LDH, PDH, TPI, FACOAL, etc.)
 
-| Output | Description |
-|--------|-------------|
-| TF activity matrix | Per-cell activity scores for each transcription factor |
-| Differential TF activity | TFs with significantly different activity between phenotype groups, per cell type |
-| TF-target networks | Visualization of which target genes contribute to each TF's activity score |
+### Cell Types
 
-## Resource Requirements
+| Cell Type | Scripts |
+|-----------|---------|
+| Ast (Astrocytes) | `compassRunAstTsai.sh`, `compassRunAstF.sh`, `compassRunAstM.sh` |
+| Exc (Excitatory neurons) | `compassRunExcTsai.sh` and variants |
+| Inh (Inhibitory neurons) | `compassRunInhTsai.sh` and variants |
+| Mic (Microglia) | `compassRunMicTsai.sh` and variants |
+| Oli (Oligodendrocytes) | `compassRunOliTsai.sh` and variants |
+| OPC (OPC) | `compassRunOPCTsai.sh` and variants |
+
+Each cell type is run separately for female and male subjects.
+
+### Environment
+
+Uses `compass_analysis` (from `Analysis/envs/compass.yml`):
+
+- Python >= 3.10
+- COMPASS package
+- scipy, pandas, numpy
+- scanpy, anndata
+
+!!! warning "IBM CPLEX required"
+    COMPASS requires the IBM CPLEX solver, which is proprietary software. Academic licenses are available at [https://www.ibm.com/academic/](https://www.ibm.com/academic/). Set `CPLEX_STUDIO_DIR` and add the CPLEX binary to `PATH` before running.
+
+### Outputs
+
+| File Pattern | Description |
+|-------------|-------------|
+| `*_pVals{CellType}.csv` | Per-reaction p-values |
+| `*_metaDF{CellType}.csv` | Meta-reaction clustering results |
+
+### Resource Requirements
 
 | Parameter | Value |
 |-----------|-------|
-| Cores | 8 |
-| Memory | 64 GB |
-| Time | 2 to 4 hours |
+| Cores | 40 |
+| Memory | 600 GB |
+| Time | 24 hours |
+| Partition | High-memory nodes required |
+
+---
+
+## DoRothEA Transcription Factor Activity (Planned)
+
+DoRothEA-based TF activity analysis is planned for future phenotypes but not yet implemented. DoRothEA is a curated resource of TF-target interactions compiled from ChIP-seq, TF binding motifs, gene expression, and literature. For each cell, it computes a TF activity score by aggregating the expression of the TF's target genes, producing a cells-by-TFs activity matrix.
+
+### Relationship to Other Analyses
+
+- **DEG** identifies which genes change expression, but does not explain why.
+- **COMPASS** identifies metabolic pathway differences associated with the phenotype.
+- **DoRothEA** (when implemented) would identify which transcription factors are likely driving expression changes, based on curated prior knowledge.
+- **SCENIC** discovers regulatory networks de novo from the data, without relying on prior knowledge databases.

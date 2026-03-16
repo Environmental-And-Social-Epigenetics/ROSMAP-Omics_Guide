@@ -123,6 +123,30 @@ pip install cellbender
 
 Set `CELLBENDER_ENV` in your configuration to the environment path.
 
+### Analysis Environments
+
+The downstream analysis phase has its own set of conda environments, installed with the `--analysis` flag:
+
+```bash
+bash setup/install_envs.sh --analysis
+```
+
+| Environment | YAML Spec | Purpose |
+|-------------|-----------|---------|
+| `deg_analysis` | `Analysis/envs/deg.yml` | DESeq2, edgeR, limma, scanpy (SocIsl DEG) |
+| `scenic_analysis` | `Analysis/envs/scenic.yml` | pySCENIC, loompy (requires ~3.5 GB motif databases separately) |
+| `compass_analysis` | `Analysis/envs/compass.yml` | COMPASS metabolic flux (requires IBM CPLEX academic license) |
+| `gsea_analysis` | `Analysis/envs/gsea.yml` | WebGestaltR, clusterProfiler |
+
+To install all environments (processing + preprocessing + analysis):
+
+```bash
+bash setup/install_envs.sh --all
+```
+
+!!! warning "NEBULA environment"
+    The ACE DEG pipeline requires a separate `nebulaAnalysis7` environment (referenced as `NEBULA_ENV` in `config/paths.sh`) that is **not** created by `install_envs.sh`. It must be created manually with the following R packages: `nebula`, `edgeR`, `zellkonverter`, `SingleCellExperiment`, `dplyr`, `ggplot2`, `ggrepel`.
+
 ### Activating Environments
 
 After sourcing `paths.sh`, activate environments using the configured variables:
