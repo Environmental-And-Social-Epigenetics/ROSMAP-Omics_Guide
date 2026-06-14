@@ -1,6 +1,6 @@
 # FASTQ Acquisition
 
-The first preprocessing step is acquiring raw FASTQ files. The two datasets use entirely different acquisition methods: the DeJager dataset is downloaded from Synapse, while the Tsai dataset is discovered on the MIT Engaging cluster and transferred to Openmind via Globus.
+The first preprocessing step is acquiring raw FASTQ files. The two datasets use entirely different acquisition methods, and the difference follows directly from how each was generated. **DeJager** is a *multiplexed* dataset deposited centrally on Synapse, so acquisition is a straightforward authenticated download keyed by Synapse ID. **Tsai** is a *single-patient-per-library* dataset that was sequenced in-house and left scattered across the lab's Engaging filesystems over years, so acquisition is really a *discovery* problem: find every relevant FASTQ, index it, and move it to the compute cluster. That is why DeJager has a one-step download and Tsai has a three-step discover → organize → transfer pipeline.
 
 !!! tip "Skip FASTQ acquisition"
     If you want to start from CellRanger or CellBender outputs instead of raw FASTQs, see [Data Access](../data-access.md) for download instructions. FASTQs can also be downloaded from the NAS backup as an alternative to Synapse or Globus.
@@ -88,6 +88,19 @@ ${DEJAGER_FASTQS}/
 ## Tsai: Engaging Cluster Discovery and Transfer
 
 The Tsai acquisition pipeline has three sub-steps: discovering FASTQs on Engaging, organizing them, and transferring to Openmind.
+
+Conceptually: **Step 1 (discover)** uses GNU `parallel` to sweep the scattered `/nfs/picower*` locations and
+collapse them into a single manifest (`All_ROSMAP_FASTQs.csv`, 5,197 rows), so the rest of the pipeline has
+one authoritative list instead of many ad-hoc paths. **Step 2 (organize, optional)** builds a clean
+`{projid}/{Library_ID}/` symlink hierarchy — needed only if you run Cell Ranger directly on Engaging.
+**Step 3 (transfer)** moves the files to Openmind, where the GPU/compute pipeline runs.
+
+!!! question "Why Globus instead of `scp`/`rsync` for the transfer?"
+    The Tsai dataset is ~9 TB across thousands of files. Globus is built for exactly this: it checksums
+    every file end-to-end, **resumes** automatically after network drops (a multi-day `rsync` that dies at
+    90% is painful), parallelizes transfers, and runs between managed institutional endpoints without
+    holding an interactive SSH session open. For multi-terabyte inter-cluster moves it is far more robust
+    than `scp`/`rsync`.
 
 ### Step 1: Build the Master CSV
 

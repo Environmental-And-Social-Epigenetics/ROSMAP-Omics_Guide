@@ -45,6 +45,19 @@ You do not need to run every pipeline phase. The table below shows what to downl
 | **CellBender output** | All preprocessing | ~0.5–1 TB per dataset | Processing conda envs only (no GPU) | [QC Filtering](processing/qc-filtering.md) |
 | **Annotated H5ad** | Preprocessing + Processing | ~83 GB (Tsai) | Analysis conda envs only | [Analysis](analysis/index.md) |
 
+!!! tip "Which entry point should I choose?"
+    Pick the **latest** stage whose parameters you do not intend to change — every earlier stage you skip
+    saves substantial download, compute, and GPU time:
+
+    - **Entry C (CellBender output)** if you want to experiment with QC thresholds, doublet handling, or
+      integration parameters but trust the default ambient-RNA removal. No GPU needed.
+    - **Entry D (Annotated H5ad)** if you only need to run downstream analysis (DEG/GSEA/SCENIC/COMPASS)
+      with the default preprocessing and integration. This is by far the lightest path (~83 GB, analysis
+      envs only) and the right choice for most analysis-only users.
+
+    Only start from FASTQs (Entry A) or CellRanger output (Entry B) if you genuinely need to re-run
+    alignment or ambient-RNA removal — both require terabytes of storage and, for CellBender, a GPU.
+
 ---
 
 ### Entry Point A: Start from FASTQs
@@ -211,7 +224,7 @@ Globus is recommended for large inter-cluster transfers (e.g., Engaging to Openm
 | Cluster | Endpoint ID |
 |---------|-------------|
 | Openmind | `cbc6f8da-d37e-11eb-bde9-5111456017d9` |
-| Engaging | `c52fcff2-761c-11eb-8cfc-cd623f92e1c0` |
+| Engaging | `ec54b570-cac5-47f7-b2a1-100c2078686f` |
 
 **Scripts** are in `Data_Access/Transcriptomics/Engaging-Openmind_Transfer/{Tsai,DeJager}/`.
 
@@ -228,4 +241,4 @@ Clinical phenotype CSVs are tracked in git at `Data/Phenotypes/` and are availab
 | `ROSMAP_clinical.csv` | Core clinical variables (sex, education, APOE, cogdx, Braak, CERAD, PMI) | 3,584 |
 | `dataset_652_basic_12-23-2021.csv` | Comprehensive phenotype extract (cognitive, neuropath, biomarkers, lifestyle) | 3,681 |
 | `TSAI_DEJAGER_all_patients_wACEscores.csv` | Tsai + DeJager patients with ACE scores | 296 |
-| `DeJager_ID_Map.csv` | Maps `projid` to `individualID` for DeJager samples | ~20 |
+| `DeJager_ID_Map.csv` | Maps `projid` to `individualID` for DeJager samples | ~58 |

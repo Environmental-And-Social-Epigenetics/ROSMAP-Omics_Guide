@@ -9,20 +9,19 @@ The pipeline includes several resource-intensive steps. The table below summariz
 | Step | Cores | Memory | Time | GPU | Notes |
 |------|-------|--------|------|-----|-------|
 | Cell Ranger (DeJager) | 32 | 128 GB | 47h | None | Per library |
-| Cell Ranger (Tsai) | 16 | 64 GB | 2 days | None | Per patient; `mit_preemptable` partition |
+| Cell Ranger (Tsai) | 32 | 128 GB | 47h | None | Per patient; `mit_preemptable` partition |
 | CellBender (DeJager) | 32 | 128 GB | 47h | A100 | Per library |
 | CellBender (Tsai) | 4 | 64 GB | 4h | 1 GPU | Per patient |
-| Demuxlet BAM filter | 45 | 400 GB | 3h | None | Per library, DeJager only |
-| Demuxlet pileup | 10 | 500 GB | 36h | None | Per library, DeJager only |
+| Demuxlet BAM filter | 45 | 350 GB | 3h | None | Per library, DeJager only |
+| Demuxlet pileup | 10 | 350 GB | 36h | None | Per library, DeJager only |
 | Stage 1: QC Filtering | 4 | 32 GB | 12h | None | Array job, per sample |
 | Stage 2: Doublet Removal | 4 | 32 GB | 12h | None | Array job, per sample |
 | Stage 3: Integration | 32 | 500 GB | 48h | None | Single job, all samples |
-| DEG Preprocessing (NEBULA) | 8 | 200 GB | 12h | None | Single job, run once per pipeline |
-| DEG per job (NEBULA) | 45 | 100 GB | 5h | None | 816 jobs total for ACE |
-| DEG (DESeq2, per cell type) | 8 | 64 GB | 1-2h | None | SocIsl |
+| DEG split (`prep_celltype_splits.py`) | varies | high | a few h | None | Once per integration |
+| DEG (pseudobulk DESeq2) | 4–8 | 64–200 GB | 1–24h | None | ACE: 4c/200G; SocIsl: 8c/64G |
+| GSEA (Analysis) | 8–45 | 64–100 GB | 5–12h | None | ACE Tsai 8c/64G; ACE DeJager 45c/100G |
 | SCENIC (Analysis) | 32+ | 256 GB+ | 24-48h | None | Per cell type |
 | COMPASS (Analysis) | 40 | 600 GB | 24h | None | Per cell type per sex; requires CPLEX |
-| GSEA (Analysis) | 4 | 16 GB | 1-2h | None | Per analysis |
 
 ## Scratch Space Issues
 
@@ -143,7 +142,7 @@ Affected patients: 2518573, 10310236, 21000054, 22396591, 27586957, 34542628, 38
 
 **Symptom.** The pileup generation job is killed by the SLURM OOM killer.
 
-**Fix.** Verify that BAM filtering (Step A) completed successfully; an unfiltered BAM will consume far more memory during pileup. If the filtered BAM is still large, increase `--mem` in the SLURM script (up to 500 GB). The VCF may contain too many non-SNP variants if filtering was not applied.
+**Fix.** Verify that BAM filtering (Step A) completed successfully; an unfiltered BAM will consume far more memory during pileup. Both Demuxlet steps request 350 GB by default; if the filtered BAM is still large, increase `--mem` above that. The VCF may contain too many non-SNP variants if filtering was not applied.
 
 ## Processing Pipeline Issues
 
@@ -151,7 +150,7 @@ Affected patients: 2518573, 10310236, 21000054, 22396591, 27586957, 34542628, 38
 
 **Symptom.** The integration job is killed during sample loading or concatenation.
 
-**Cause.** Loading all samples into a single AnnData object requires approximately 500 GB of RAM for the full Tsai dataset (476 samples).
+**Cause.** Loading all samples into a single AnnData object requires approximately 500 GB of RAM for the full Tsai dataset (478 samples).
 
 **Fix.** Ensure your SLURM allocation requests at least 500 GB. Use a high-memory partition (e.g., `lhtsai` on MIT Openmind). For initial testing, use `--sample-ids` to process a small subset.
 
@@ -182,7 +181,12 @@ R -e 'BiocManager::install("GenomeInfoDbData")'
 
 ## Pipeline Naming Confusion
 
-Some legacy scripts in `Processing/DeJager/_legacy/` are named with "TsaiPipeline" (e.g., `firstStageTsaiPipeline.py`). This is a historical artifact: the pipeline was developed on the Tsai dataset first. The current production scripts in `Processing/DeJager/Pipeline/` use generic stage-based names (`01_qc_filter.py`, etc.) and this naming issue applies only to archived legacy scripts.
+!!! note "For maintainers"
+    Some **archived** scripts in `Processing/DeJager/_legacy/` are named with "TsaiPipeline" (e.g.,
+    `firstStageTsaiPipeline.py`) — a historical artifact from when the pipeline was developed on the Tsai
+    dataset first. Always use the current production scripts in `Processing/DeJager/Pipeline/`, which use
+    generic stage-based names (`01_qc_filter.py`, etc.). The `_legacy/` scripts are not part of any
+    documented workflow.
 
 ## Configuration Issues
 
@@ -211,26 +215,33 @@ bash config/preflight.sh
 
 ## Analysis Pipeline Issues
 
-### NEBULA Convergence Issues
+### DEG: NA p-values or skipped cell types
 
-**Symptom.** NEBULA returns warnings about non-convergence or produces NA p-values for some genes.
+**Symptom.** A DESeq2 DEG run produces `NA` adjusted p-values for some genes, or skips a cell type/sex
+stratum entirely.
 
-**Cause.** Typically occurs with cell types that have very few cells or subjects in a specific stratum (e.g., rare inhibitory neuron subtypes in a sex-stratified analysis).
+**Cause.** `aceDegT.Rscript` skips a stratum with fewer than 10 cells or fewer than 5 patients (too few
+pseudobulk replicates to fit DESeq2). DESeq2 also sets `padj = NA` for genes flagged by independent
+filtering or as count outliers — this is expected, not an error.
 
-**Fix.** The pipeline skips analyses with fewer than 50 cells or 10 subjects automatically. For borderline cases, check the convergence field in the NEBULA output object (`re$convergence`). Non-converged results should be interpreted with caution.
+**Fix.** Confirm the stratum has enough patients (check the `n_patients` printed by the script). For the
+largest cell types, the per-cell-type h5ad can exceed R's sparse-matrix limit (2³¹ nonzeros); the script
+skips these and points to `legacy/pseudobulk_broad_Exc.py` for a Python-side pseudobulk.
 
-### NEBULA Environment Missing
+### ACE DEG: "Could not find conda environment: nebulaAnalysis7"
 
-**Symptom.** `run_nebula.sh` fails with "Could not find conda environment: nebulaAnalysis7".
+**Symptom.** `run_deg.sh` fails because the `nebulaAnalysis7` environment is missing.
 
-**Fix.** The NEBULA environment is not created by `install_envs.sh --analysis`. Create it manually:
+**Fix.** This environment **is** created by `install_envs.sh --analysis` (from
+`envs/analysis/nebula/environment.yml`) — you do not create it by hand. Re-run the installer and confirm
+`NEBULA_ENV` in `config/paths.sh` points at the resulting env path:
 
 ```bash
-conda create -n nebulaAnalysis7 -c conda-forge r-base>=4.2
-conda activate nebulaAnalysis7
-R -e 'install.packages("nebula"); BiocManager::install(c("edgeR", "zellkonverter", "SingleCellExperiment"))'
-R -e 'install.packages(c("dplyr", "ggplot2", "ggrepel"))'
+bash setup/install_envs.sh --analysis
 ```
+
+Despite the name, this environment runs DESeq2 pseudobulk, not the NEBULA framework (see
+[Differential Expression](analysis/deg.md#ace-deg-pipeline)).
 
 ### COMPASS CPLEX License Error
 

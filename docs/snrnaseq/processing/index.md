@@ -89,7 +89,7 @@ The pipeline automatically discovers which samples to process:
 
 Sample order is preserved from `patient_metadata.csv` to ensure reproducibility.
 
-The SLURM array wrappers default to `--array=1-476%32` (Tsai) or `--array=1-200%32` (DeJager), with up to 32 concurrent tasks. Array tasks beyond the actual sample count exit gracefully. To override:
+The SLURM array wrappers default to `--array=1-478%32` (Tsai) or `--array=1-200%32` (DeJager), with up to 32 concurrent tasks. Array tasks beyond the actual sample count exit gracefully, so the same fixed range is safe to reuse. To override:
 
 ```bash
 sbatch --array=1-$(python 01_qc_filter.py --list-samples | wc -l) 01_qc_filter.sh
@@ -123,23 +123,38 @@ Processing outputs can also be downloaded from the NAS instead of regenerated. S
 
 | Stage | Cores | Memory | Time | Notes |
 |-------|-------|--------|------|-------|
-| 1. QC Filtering | 4 | 32 GB | 12 hours | Array job (Tsai: 476 tasks, DeJager: 200 tasks, 32 concurrent) |
+| 1. QC Filtering | 4 | 32 GB | 12 hours | Array job (Tsai: 478 tasks, DeJager: 200 tasks, 32 concurrent) |
 | 2. Doublet Removal | 4 | 32 GB | 12 hours | Array job (same dimensions as Stage 1) |
 | 3. Integration | 32 | 500 GB | 48 hours | Single job (loads all samples into memory) |
 
 !!! warning "Stage 3 Memory"
-    Stage 3 loads all samples into a single AnnData object for integration. For the Tsai dataset (476 samples), this requires approximately 500 GB of RAM. Ensure your SLURM partition can allocate this amount. The `lhtsai` partition on MIT Openmind is configured for this purpose.
+    Stage 3 loads all samples into a single AnnData object for integration. For the Tsai dataset (478 samples), this requires approximately 500 GB of RAM. Ensure your SLURM partition can allocate this amount. The `lhtsai` partition on MIT Openmind is configured for this purpose.
 
 ## Configuration
 
 All shell wrappers source `config/paths.sh` at the repository root. This is the single source of truth for conda environments, data directories, and SLURM log paths. To adapt the pipeline for a new cluster, edit `config/paths.sh` (or create `config/paths.local.sh`) and no changes to the pipeline scripts are needed.
 
-Conda environment specs for recreating environments from scratch are in `Processing/Tsai/Pipeline/envs/`.
+Conda environment specs for recreating environments from scratch are under the top-level `envs/processing/`
+directory (`stage1_qc/`, `stage2_doublets/`, `stage3_integration/`, each with an `environment.yml`).
+
+## What Each Stage Is For
+
+The three stages remove progressively subtler problems:
+
+- **Stage 1 (QC filtering)** removes *low-quality cells* — damaged or dying nuclei (high mitochondrial
+  fraction) and empty/low-content droplets that slipped past CellBender.
+- **Stage 2 (doublet removal)** removes a *technical artifact* — droplets that captured two nuclei, which
+  would otherwise look like a spurious intermediate cell state.
+- **Stage 3 (integration & annotation)** removes *batch effects* (Harmony) and assigns *cell types*, turning
+  per-sample matrices into one coherent, labeled dataset.
+
+The corresponding environments isolate incompatible stacks: `QC_ENV` (Python/scanpy), `SINGLECELL_ENV`
+(R/scDblFinder), `BATCHCORR_ENV` (Python harmonypy/decoupler + R for markers).
 
 ## Pages in This Section
 
 | Page | Description |
 |------|-------------|
-| [QC Filtering](qc-filtering.md) | MAD-based quality control, percentile thresholds, cell count tracking |
+| [QC Filtering](qc-filtering.md) | Percentile-based quality control thresholds, cell count tracking |
 | [Doublet Removal](doublet-removal.md) | scDblFinder tool, R environment bootstrapping, expected doublet rates |
 | [Integration and Annotation](integration-annotation.md) | Normalization, HVG, PCA, Harmony, clustering, UMAP, ORA cell type annotation |

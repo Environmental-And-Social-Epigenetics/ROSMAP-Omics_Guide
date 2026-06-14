@@ -4,6 +4,9 @@ CellBender removes ambient RNA contamination from Cell Ranger count matrices usi
 
 This step requires GPU acceleration and is the third preprocessing step for both datasets.
 
+!!! danger "Output filename mismatch — read before Stage 1"
+    The Tsai **integrated** CellBender step (run from `02_Cellranger_Counts`) writes its output as `cellbender_output.h5` / `cellbender_output_filtered.h5`, but the Stage 1 QC script (`Processing/Tsai/Pipeline/01_qc_filter.py`) reads `processed_feature_bc_matrix_filtered.h5` from each sample directory. These names do not match, so Stage 1 will fail with a missing-file error unless you reconcile them. See [Reconciling the Tsai filename for Stage 1](#reconciling-the-tsai-filename-for-stage-1) below for the rename/symlink workaround.
+
 ## How CellBender Works
 
 CellBender fits a variational autoencoder to distinguish two sources of RNA in each droplet:
@@ -29,8 +32,16 @@ cellbender remove-background \
 |-----------|-------|-------------|
 | `--cuda` | (flag) | Use GPU acceleration. Required for practical runtimes. |
 | `--input` | `raw_feature_bc_matrix.h5` | Cell Ranger raw output (all barcodes, not the filtered matrix). CellBender needs empty droplets to model the ambient profile. |
-| `--fpr` | `0` or `0.01` | False positive rate. Controls how aggressively ambient RNA is removed. |
+| `--fpr` | `0.01` (Tsai integrated) / `0` (DeJager, Tsai standalone) | False positive rate. Controls how aggressively ambient RNA is removed (see [below](#understanding-the-false-positive-rate-fpr)). |
 | `--output` | `<OUTPUT.h5>` | Path for the corrected count matrix. |
+
+!!! note "Two Tsai CellBender entry points"
+    Tsai CellBender can run two ways, with **different FPR defaults and output names**:
+
+    - **Integrated** — runs automatically after Cell Ranger in the `02_Cellranger_Counts` batch orchestrator (`Scripts/run_batch.sh`), at **`--fpr 0.01`** (`Config/cellranger_config.sh: CB_FPR=0.01`), writing `cellbender_output.h5` / `cellbender_output_filtered.h5`. This is the path the rest of this page documents.
+    - **Standalone** — the separate `Preprocessing/Tsai/03_Cellbender/` pipeline reads the same Cell Ranger outputs but defaults to **`--fpr 0`** (`Config/cellbender_config.sh: CB_FPR=0`). Override with `CB_FPR=...` before running its generator.
+
+    DeJager uses `--fpr 0` and the `processed_feature_bc_matrix(_filtered).h5` naming.
 
 ### Dataset-Specific Parameters
 
@@ -77,6 +88,9 @@ The `--fpr` parameter controls the tradeoff between removing ambient RNA and ret
 - Higher values retain more signal but also more ambient contamination.
 
 For analyses that depend on clean cell type boundaries (clustering, annotation, cell type-specific differential expression), stringent FPR settings are appropriate.
+
+!!! question "Why does DeJager use FPR 0 while the Tsai integrated path uses 0.01?"
+    DeJager libraries are **multiplexed** (multiple patients per library), and the downstream [Demuxlet](demuxlet.md) step assigns each cell to a patient by matching its SNP genotype. Residual ambient RNA blurs those per-cell genotype signals, so DeJager favors the most aggressive ambient removal (`--fpr 0`). The Tsai integrated path processes **one patient per library** with identity already known from metadata, so it tolerates the slightly more permissive `--fpr 0.01`, retaining marginally more true signal. The standalone Tsai `03_Cellbender` pipeline keeps `--fpr 0` as its default for users who want maximally clean matrices.
 
 ## GPU Requirements
 
@@ -162,6 +176,29 @@ CellBender produces corrected count matrices:
     ```
 
 The `_filtered.h5` file is the primary input for the Processing pipeline (Stage 1: QC Filtering). It contains the corrected count matrix with only cell-containing barcodes.
+
+For DeJager, the filtered file is already named `processed_feature_bc_matrix_filtered.h5` — the exact name Stage 1 expects. For Tsai, it is named `cellbender_output_filtered.h5`, which Stage 1 does **not** look for; see the next section.
+
+### Reconciling the Tsai filename for Stage 1
+
+`Processing/Tsai/Pipeline/01_qc_filter.py` discovers and reads each sample as:
+
+```
+${TSAI_PREPROCESSED}/<projid>/processed_feature_bc_matrix_filtered.h5
+```
+
+but the Tsai integrated CellBender step writes `cellbender_output_filtered.h5` into that same `<projid>/` directory. Until this is fixed at the source (see the [code follow-ups note](../_audit_code_followups.md)), reconcile the names before running Stage 1. A symlink is preferred (no extra disk, preserves provenance):
+
+```bash
+# From ${TSAI_PREPROCESSED} (== ${TSAI_CELLBENDER}); one symlink per sample dir
+for d in */; do
+  src="${d%/}/cellbender_output_filtered.h5"
+  dst="${d%/}/processed_feature_bc_matrix_filtered.h5"
+  [[ -f "$src" && ! -e "$dst" ]] && ln -s "cellbender_output_filtered.h5" "$dst"
+done
+```
+
+Replace `ln -s` with `cp` if your filesystem does not support symlinks. After this, `01_qc_filter.py --list-samples` should report every completed sample.
 
 ## Output Verification
 

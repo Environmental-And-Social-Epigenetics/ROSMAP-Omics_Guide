@@ -100,16 +100,24 @@ This creates the following environments:
 
 | Environment | YAML Spec | Config Variable | Purpose |
 |-------------|-----------|-----------------|---------|
-| `qcEnv` | `envs/stage1_qc.yml` | `QC_ENV` | Stage 1: QC filtering (scanpy, anndata) |
-| `single_cell_BP` | `envs/stage2_doublets.yml` | `SINGLECELL_ENV` | Stage 2: Doublet removal (R, scDblFinder, BiocParallel) |
-| `BatchCorrection_SingleCell` | `envs/stage3_integration.yml` | `BATCHCORR_ENV` | Stage 3: Integration (scanpy, harmonypy, decoupler) |
+| `qcEnv` | `envs/processing/stage1_qc/environment.yml` | `QC_ENV` | Stage 1: QC filtering (scanpy, anndata) |
+| `single_cell_BP` | `envs/processing/stage2_doublets/environment.yml` | `SINGLECELL_ENV` | Stage 2: Doublet removal (R, scDblFinder, BiocParallel) |
+| `BatchCorrection_SingleCell` | `envs/processing/stage3_integration/environment.yml` | `BATCHCORR_ENV` | Stage 3: Integration (scanpy, harmonypy, decoupler) |
 
-The YAML specs are located in `Processing/Tsai/Pipeline/envs/`. To create environments manually instead of using the installer:
+All environment specs live under the **top-level `envs/`** directory, organized by phase
+(`envs/preprocessing/`, `envs/processing/`, `envs/analysis/`), with one subdirectory per environment
+containing an `environment.yml`. To create an environment manually instead of using the installer:
 
 ```bash
-conda env create -f Processing/Tsai/Pipeline/envs/stage1_qc.yml \
+conda env create -f envs/processing/stage1_qc/environment.yml \
     -p $CONDA_ENV_BASE/qcEnv
 ```
+
+!!! tip "Why three separate processing environments?"
+    The stages have incompatible dependency stacks — Stage 1 is pure Python/scanpy, Stage 2 is R
+    (scDblFinder via Bioconductor), and Stage 3 mixes Python (scanpy, harmonypy, decoupler) with R (for the
+    Mohammadi marker `.rds`). Keeping them separate avoids solver conflicts, lets each be updated
+    independently, and means a Stage 2 R upgrade can't break Stage 1.
 
 ### CellBender Environment
 
@@ -133,19 +141,29 @@ bash setup/install_envs.sh --analysis
 
 | Environment | YAML Spec | Purpose |
 |-------------|-----------|---------|
-| `deg_analysis` | `Analysis/envs/deg.yml` | DESeq2, edgeR, limma, scanpy (SocIsl DEG) |
-| `scenic_analysis` | `Analysis/envs/scenic.yml` | pySCENIC, loompy (requires ~3.5 GB motif databases separately) |
-| `compass_analysis` | `Analysis/envs/compass.yml` | COMPASS metabolic flux (requires IBM CPLEX academic license) |
-| `gsea_analysis` | `Analysis/envs/gsea.yml` | WebGestaltR, clusterProfiler |
+| `deg_analysis` | `envs/analysis/deg/environment.yml` | DESeq2, edgeR, limma, scanpy (SocIsl DEG) |
+| `scenic_analysis` | `envs/analysis/scenic/environment.yml` | pySCENIC, loompy (requires ~3.5 GB motif databases separately) |
+| `compass_analysis` | `envs/analysis/compass/environment.yml` | COMPASS metabolic flux (requires IBM CPLEX academic license) |
+| `gsea_analysis` | `envs/analysis/gsea/environment.yml` | WebGestaltR, clusterProfiler |
+| `nebulaAnalysis7` | `envs/analysis/nebula/environment.yml` | ACE DEG (DESeq2, zellkonverter, scran) — legacy name |
 
-To install all environments (processing + preprocessing + analysis):
+`--analysis` installs **all** of the above, including `nebulaAnalysis7`. To install every phase at once
+(processing + preprocessing + analysis):
 
 ```bash
 bash setup/install_envs.sh --all
 ```
 
-!!! warning "NEBULA environment"
-    The ACE DEG pipeline requires a separate `nebulaAnalysis7` environment (referenced as `NEBULA_ENV` in `config/paths.sh`) that is **not** created by `install_envs.sh`. It must be created manually with the following R packages: `nebula`, `edgeR`, `zellkonverter`, `SingleCellExperiment`, `dplyr`, `ggplot2`, `ggrepel`.
+!!! note "The `nebulaAnalysis7` environment is created automatically"
+    The ACE DEG pipeline uses the `nebulaAnalysis7` environment (referenced as `NEBULA_ENV` in
+    `config/paths.sh`). Despite the name it runs **DESeq2 pseudobulk**, not the NEBULA framework, and it
+    **is** built by `install_envs.sh --analysis` from `envs/analysis/nebula/environment.yml`. No manual
+    creation is needed.
+
+!!! tip "`--method=conda` vs `--method=requirements`"
+    `install_envs.sh` defaults to `--method=conda` (create each env directly from its `environment.yml`),
+    which is recommended. If conda channel resolution fails on your cluster, fall back to
+    `--method=requirements`, which bootstraps a base interpreter and installs from a `requirements.txt`.
 
 ### Activating Environments
 
@@ -200,6 +218,14 @@ bash config/preflight.sh
 ```
 
 This validates that all pipeline prerequisites (conda environments, input files, references) are in place.
+
+!!! tip "Reading `check_paths` / `preflight.sh` output"
+    **Errors** are fatal and must be fixed before running — most commonly `CELLRANGER_PATH` and
+    `CELLRANGER_REF`, which start as the `__UNCONFIGURED__` sentinel (an intentionally invalid path so a
+    fresh clone fails loudly). **Warnings/NOTEs** for the optional dependencies (`DEJAGER_WGS_DIR`,
+    `CPLEX_DIR`, `SCENIC_RANKING_DIR`, Singularity) are safe to ignore unless you are running those specific
+    workflows. Fill in the errored variables and re-run until you see `All paths verified.` (or
+    `PASSED with N warning(s).`).
 
 After verifying your setup, see [Data Access and Entry Points](data-access.md) to populate the `Data/` directory for your chosen starting point.
 

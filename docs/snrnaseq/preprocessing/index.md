@@ -47,13 +47,13 @@ See [FASTQ Acquisition](fastq-acquisition.md) for full details.
 
 ### 2. Cell Ranger Count
 
-Cell Ranger v8.0.0 aligns reads to the GRCh38 human reference genome and generates gene expression count matrices. Key flags include `--include-introns true` (critical for nuclear RNA) and `--nosecondary` (skip secondary analysis to save time).
+Cell Ranger v8.0.0 aligns reads to the GRCh38 human reference genome and generates gene expression count matrices. Key flags include `--include-introns true` and `--nosecondary` (skip secondary analysis to save time). Intron counting is essential here because **nuclei are enriched for nascent, incompletely spliced pre-mRNA**; intronic reads recover that nuclear signal, which exon-only counting would discard, substantially increasing detected genes and UMIs per nucleus.
 
 See [Cell Ranger](cellranger.md) for parameters and batch processing strategy.
 
 ### 3. CellBender Ambient RNA Removal
 
-CellBender removes ambient RNA contamination using a deep generative model on GPU. The pipeline uses stringent false positive rate settings (`--fpr 0` or `0.01`) to aggressively remove ambient signal.
+CellBender removes ambient RNA contamination using a deep generative model on GPU. The pipeline uses stringent false-positive-rate settings: the Tsai integrated step uses **`--fpr 0.01`** and DeJager (and the standalone Tsai `03_Cellbender` pipeline) use **`--fpr 0`**.
 
 See [CellBender](cellbender.md) for GPU requirements and parameter details.
 
@@ -72,9 +72,13 @@ Each preprocessing step produces specific output files that serve as input to th
 | Cell Ranger | `outs/raw_feature_bc_matrix.h5` | Raw count matrix (all barcodes) |
 | Cell Ranger | `outs/filtered_feature_bc_matrix.h5` | Cell Ranger-filtered count matrix |
 | Cell Ranger | `outs/possorted_genome_bam.bam` | Aligned reads (DeJager only, for Demuxlet) |
-| CellBender | `processed_feature_bc_matrix.h5` | Ambient RNA-corrected count matrix |
-| CellBender | `processed_feature_bc_matrix_filtered.h5` | Filtered version of corrected matrix |
+| CellBender (DeJager) | `processed_feature_bc_matrix(_filtered).h5` | Ambient-corrected matrix (filtered = corrected **and** low-quality barcodes excluded) |
+| CellBender (Tsai integrated) | `cellbender_output(_filtered).h5` | Same content, different name — see [CellBender](cellbender.md#reconciling-the-tsai-filename-for-stage-1) for the Stage 1 reconciliation |
 | Demuxlet | `demux1.best` | Cell-to-patient assignment file |
+
+The **filtered** CellBender matrix (ambient-corrected with only cell-containing barcodes) is the input to
+Stage 1 QC. Note the Tsai integrated step names it `cellbender_output_filtered.h5`, which Stage 1 does not
+read directly — apply the rename/symlink described on the CellBender page.
 
 ## SLURM Resource Requirements
 
@@ -84,13 +88,13 @@ Each preprocessing step produces specific output files that serve as input to th
 |------|-----------|-------|--------|------|-----|
 | Cell Ranger | `mit_normal` | 32 | 128 GB | 47h | None |
 | CellBender | `mit_normal_gpu` | 32 | 128 GB | 47h | A100 |
-| Demuxlet | `mit_normal` | 80 | 400 GB | 48h | None |
+| Demuxlet (BAM filter / pileup) | `mit_normal` | 45 / 10 | 350 GB | 3h / 36h | None |
 
 ### Tsai
 
 | Step | Partition | Cores | Memory | Time | GPU |
 |------|-----------|-------|--------|------|-----|
-| Cell Ranger | `mit_preemptable` | 16 | 64 GB | 2 days | None |
+| Cell Ranger | `mit_preemptable` | 32 | 128 GB | 47h | None |
 | CellBender | `mit_normal_gpu` | 4 | 64 GB | 4h | 1 GPU |
 
 ## Next Steps

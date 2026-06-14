@@ -83,9 +83,10 @@ nav:
       - Overview: snrnaseq/analysis/index.md
       - Differential Expression: snrnaseq/analysis/deg.md
       - SCENIC: snrnaseq/analysis/scenic.md
-      - TF and Metabolic Analysis: snrnaseq/analysis/tf-analysis.md
+      - Metabolic and TF Analysis: snrnaseq/analysis/tf-analysis.md
       - Gene Set Enrichment: snrnaseq/analysis/gsea.md
     - Troubleshooting: snrnaseq/troubleshooting.md
+    - Code Follow-ups (maintainers): snrnaseq/_audit_code_followups.md
   - Lipidomics:
     - Overview: lipidomics/index.md
     - Scientific Background: lipidomics/background.md

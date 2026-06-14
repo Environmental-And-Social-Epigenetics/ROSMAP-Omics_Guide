@@ -8,7 +8,7 @@ Stage 3 is the most computationally intensive step. It loads all singlet-filtere
 |-----------|-------|
 | Script | `03_integration_annotation.py` |
 | SLURM wrapper | `03_integration_annotation.sh` |
-| Conda environment | `BATCHCORR_ENV` (spec: `envs/stage3_integration.yml`) |
+| Conda environment | `BATCHCORR_ENV` (spec: `envs/processing/stage3_integration/environment.yml`) |
 | Job type | Single SLURM job (not an array) |
 
 ## Processing Steps
@@ -29,7 +29,7 @@ The script executes the following steps in order. Each step, its scanpy/harmonyp
 | 8. Neighbor graph | `sc.pp.neighbors` | `n_neighbors=30`, `n_pcs=30`, `metric="cosine"`, `use_rep="X_harmony"` |
 | 9. Clustering | `sc.tl.leiden` | Resolutions: `0.2`, `0.5`, `1.0` |
 | 10. UMAP | `sc.tl.umap` | `min_dist=0.15`, `random_state=0` |
-| 11. Cell type annotation | `decoupler.run_ora` | Mohammadi 2020 PFC markers; `use_raw=False` |
+| 11. Cell type annotation | `decoupler.run_ora` | Mohammadi 2020 PFC markers; `use_raw=True` (full-gene `.raw`) |
 
 ### Step Details
 
@@ -43,7 +43,14 @@ The raw count matrix is preserved in `adata.layers["counts"]` for two purposes: 
 
 The Seurat v3 method (`flavor="seurat_v3"`) is used to select the top 3,000 highly variable genes. This method models the mean-variance relationship from raw counts and selects genes with the highest residual variance, which is more robust than methods that operate on normalized data.
 
-Only these 3,000 genes are used for PCA and subsequent dimensionality reduction steps. All genes are retained in the AnnData object for other analyses.
+HVG selection is **batch-aware**: `highly_variable_genes` is called with `batch_key` set to the Harmony
+batch key (`derived_batch` for Tsai, `library_id` for DeJager). Variability is ranked *within* each batch
+and then combined, so a gene that looks variable only because of a batch effect is not preferentially
+selected. When `--skip-harmony` is passed, `batch_key` is `None` and HVGs are selected globally.
+
+Only these 3,000 genes are used for PCA and subsequent dimensionality reduction steps. The full,
+normalized gene matrix is preserved in `adata.raw` (used later for marker-based annotation) and all genes
+remain available for downstream analyses.
 
 #### PCA
 
@@ -69,9 +76,14 @@ Harmony iteratively adjusts the PCA embedding so that cells from different seque
     | Parameter | Value | Description |
     |-----------|-------|-------------|
     | Input representation | `X_pca` | 30-component PCA embedding |
-    | Batch variable | `patient_id` | Patient identifier |
+    | Batch variable | `library_id` | Sequencing-library identifier (~127 groups) — the default in the DeJager `03_integration_annotation.py` |
     | Theta | 2.0 | Correction strength (default) |
     | Output | `X_harmony` | Corrected embedding stored in `obsm` |
+
+    For DeJager, `library_id` is the canonical Harmony key: it captures technical variation at the finest
+    grouping that still pools multiple patients (libraries are multiplexed), so it corrects batch effects
+    without collapsing the inter-individual variation needed for pseudobulk DE. `derived_batch` and
+    `patient_id` are available as sensitivity variants via `--harmony-batch-key`.
 
 ##### Why Not Use `projid` (Patient ID) for Tsai?
 
@@ -109,7 +121,7 @@ The neighbor graph is built using cosine distance on the Harmony-corrected embed
 |------------|-------------|---------|
 | 0.2 | `leiden_res0_2` | Coarse clusters (major cell types) |
 | 0.5 | `leiden_res0_5` | **Primary clustering** (used for annotation) |
-| 1.0 | `leiden_res1_0` | Fine clusters (subtypes and states) |
+| 1.0 | `leiden_res1` | Fine clusters (subtypes and states) |
 
 Multiple resolutions are computed to allow flexible downstream analysis. The 0.5 resolution is used by default for cell type annotation.
 
@@ -122,6 +134,12 @@ UMAP coordinates are stored in `obsm["X_umap"]` and are used for visualization o
 #### Cell Type Annotation via ORA
 
 Cell types are assigned to Leiden clusters (at resolution 0.5) using over-representation analysis (ORA) with the `decoupler` library. The reference marker set is from Mohammadi et al. (2020), which provides cell type-specific marker genes for the human prefrontal cortex.
+
+ORA runs with `use_raw=True`, i.e. against the **full-gene** normalized matrix preserved in `adata.raw`,
+not the 3,000-HVG subset used for clustering. This matters: many canonical cell-type markers are not
+highly variable across the whole dataset (a pan-neuronal marker is uniformly high in neurons), so running
+ORA on the HVG subset would silently drop them and weaken annotation. Scoring against `.raw` ensures every
+marker gene is available to the enrichment test.
 
 The annotation process:
 
@@ -213,7 +231,7 @@ The `*_annotated.h5ad` file is the primary deliverable of the entire pipeline:
 | Partition | `lhtsai` (or equivalent high-memory partition) |
 
 !!! warning "Memory Requirements"
-    Stage 3 loads the entire dataset into memory. For the Tsai dataset (476 samples, potentially millions of cells), this requires approximately 500 GB of RAM. This is the most resource-intensive step in the pipeline. Ensure your cluster partition supports this allocation before submitting.
+    Stage 3 loads the entire dataset into memory. For the Tsai dataset (478 samples, potentially millions of cells), this requires approximately 500 GB of RAM. This is the most resource-intensive step in the pipeline. Ensure your cluster partition supports this allocation before submitting.
 
 ## Troubleshooting
 

@@ -42,7 +42,7 @@ The pipeline handles two independently collected ROSMAP snRNA-seq datasets. Both
 | Source | Synapse (syn21438684) | MIT Engaging cluster |
 | Library design | Multiplexed (multiple patients per library) | One patient per library |
 | Sample assignment | Demuxlet genotype demultiplexing with WGS data | Known from sequencing metadata |
-| Patient count | ~200 libraries | 480 patients |
+| Patient count | 127 libraries with FASTQs (~131 CellBender outputs) | 480 patients (478 with CellBender output) |
 | FASTQ files | Downloaded via Synapse Python client | ~5,197 files (~9 TB), transferred via Globus |
 | Extra preprocessing step | Demuxlet/Freemuxlet (Step 4) | None |
 | Cohorts | Mixed | ACE, Resilient, SocIsl |
@@ -53,11 +53,23 @@ The pipeline handles two independently collected ROSMAP snRNA-seq datasets. Both
 The pipeline produces an annotated AnnData object (e.g., `tsai_annotated.h5ad`) containing:
 
 - Single-cell gene expression matrices, filtered and quality-controlled
-- Cell type annotations derived from over-representation analysis using Mohammadi 2020 prefrontal cortex markers
+- Cell type annotations derived from over-representation analysis (ORA) using Mohammadi 2020 prefrontal cortex markers
 - Batch-corrected PCA and UMAP embeddings (Harmony-adjusted)
 - Patient, batch, and clinical metadata per cell
 
+The **Mohammadi 2020** marker set is a curated, prefrontal-cortex-specific catalog of cell-type gene
+signatures, so it matches both the tissue (DLPFC) and the expected cell populations of this dataset. ORA
+assigns a cell type to each cluster by testing whether the cluster's expressed genes significantly overlap
+each marker signature and taking the most enriched type — a transparent, reproducible alternative to manual
+marker inspection.
+
 This object serves as the input for all downstream analyses.
+
+!!! warning "Scope of this guide"
+    This guide documents the core snRNA-seq **processing** pipeline plus the **primary** analyses (DEG,
+    GSEA, SCENIC, COMPASS, and TF activity). The repository also contains additional analysis modules
+    (CellChat, MicState, hdWGCNA, EpigenomicIntegration, CellTypeProportion, MouseOverlap) that are **out of
+    scope** here; see `Analysis/README.md` in the repository for those.
 
 You do not need to run every phase. If you already have preprocessed data (e.g., CellBender outputs or the annotated H5ad), you can enter the pipeline at any stage. See [Data Access](data-access.md) for how to download data and choose your starting point.
 
@@ -78,10 +90,10 @@ You do not need to run every phase. If you already have preprocessed data (e.g.,
 | [Doublet Removal](processing/doublet-removal.md) | scDblFinder-based computational doublet detection |
 | [Integration and Annotation](processing/integration-annotation.md) | Normalization, HVG selection, PCA, Harmony, clustering, and cell type annotation |
 | [Analysis Overview](analysis/index.md) | Analysis types, phenotype status, environments, and directory structure |
-| [Differential Expression](analysis/deg.md) | NEBULA (ACE) and DESeq2 (SocIsl) DEG pipelines |
-| [SCENIC](analysis/scenic.md) | pySCENIC regulatory network inference (SocIsl) |
-| [TF and Metabolic Analysis](analysis/tf-analysis.md) | COMPASS metabolic flux analysis (SocIsl) |
-| [Gene Set Enrichment](analysis/gsea.md) | WebGestaltR pathway enrichment (SocIsl) |
+| [Differential Expression](analysis/deg.md) | Pseudobulk DESeq2 DEG (ACE, SocIsl) |
+| [SCENIC](analysis/scenic.md) | pySCENIC regulatory network inference (ACE, SocIsl) |
+| [Metabolic and TF Analysis](analysis/tf-analysis.md) | COMPASS metabolic flux + DoRothEA TF activity (ACE, SocIsl) |
+| [Gene Set Enrichment](analysis/gsea.md) | WebGestaltR ranked GSEA (ACE, SocIsl) |
 | [Troubleshooting](troubleshooting.md) | Common errors, resource requirements, and known issues |
 
 ## Software Requirements
@@ -91,7 +103,7 @@ You do not need to run every phase. If you already have preprocessed data (e.g.,
 | Cell Ranger | v8.0.0 | Read alignment and counting |
 | CellBender | Latest | Ambient RNA removal (GPU required) |
 | Python | 3.10+ | QC filtering, integration, annotation (scanpy, anndata, harmonypy, decoupler) |
-| R | 4.2+ | Doublet removal (scDblFinder), DEG analysis (NEBULA, DESeq2, edgeR), GSEA (WebGestaltR) |
+| R | 4.2+ | Doublet removal (scDblFinder), DEG analysis (DESeq2, edgeR, limma), GSEA (WebGestaltR) |
 | pySCENIC | 0.12+ | Gene regulatory network inference (SCENIC analysis) |
 | COMPASS | 0.9+ | Metabolic flux estimation (requires IBM CPLEX) |
 | Singularity | 3.10+ | Demuxafy container for Demuxlet (DeJager only) |

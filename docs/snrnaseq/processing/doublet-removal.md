@@ -8,7 +8,7 @@ Stage 2 detects and removes computational doublets from each QC-filtered sample.
 |-----------|-------|
 | Script | `02_doublet_removal.Rscript` |
 | SLURM wrapper | `02_doublet_removal.sh` |
-| Conda environment | `SINGLECELL_ENV` (spec: `envs/stage2_doublets.yml`) |
+| Conda environment | `SINGLECELL_ENV` (spec: `envs/processing/stage2_doublets/environment.yml`) |
 | Job type | SLURM array (one task per sample) |
 
 ## Method: scDblFinder
@@ -20,6 +20,17 @@ scDblFinder was chosen over alternatives (DoubletFinder, Scrublet) because:
 - It is fast, scaling well to large datasets.
 - It integrates naturally with the Bioconductor/SingleCellExperiment ecosystem.
 - Benchmarks show competitive or superior performance across diverse single-cell datasets.
+
+!!! question "Why do *simulated* doublets find *real* ones?"
+    A doublet's transcriptome is approximately the sum of two cells' transcriptomes, so artificially adding
+    pairs of real cells produces synthetic profiles that land in the same regions of expression space as
+    genuine doublets. scDblFinder simulates many such pairs, then trains a classifier on the
+    nearest-neighbor density of simulated doublets around each real cell: cells sitting in a
+    doublet-dense neighborhood are flagged. Running this **per sample** (not pooled) keeps the simulated
+    doublets representative of each library's own composition and avoids cross-sample artifacts.
+
+For each cell, scDblFinder returns a continuous `scDblFinder.score` (used in the per-sample diagnostic
+plot) and a binary `scDblFinder.class` (`singlet`/`doublet`). Filtering keeps only `class == "singlet"`.
 
 ### Key Parameters
 
@@ -98,10 +109,13 @@ The script produces `doublet_summary.csv` in the output directory, accumulating 
 | Column | Description |
 |--------|-------------|
 | `sample_id` | Patient or library identifier |
-| `cells_input` | Number of cells from Stage 1 |
-| `singlets` | Number of cells classified as singlets |
-| `doublets` | Number of cells classified as doublets |
-| `doublet_rate` | Fraction of cells classified as doublets |
+| `n_cells_before` | Number of cells from Stage 1 |
+| `n_singlets` | Number of cells classified as singlets (retained) |
+| `n_doublets` | Number of cells classified as doublets (removed) |
+| `pct_doublets` | **Percentage** of cells classified as doublets (`100 × n_doublets / n_cells_before`) |
+
+(Header order matches `append_doublet_summary()` in `02_doublet_removal.Rscript`. Note `pct_doublets` is a
+percentage, not a fraction.)
 
 ## Expected Doublet Rates
 
@@ -139,7 +153,7 @@ graph TD
 | Cores | 4 |
 | Memory | 32 GB |
 | Time | 12 hours |
-| Array | Tsai: `1-476%32`, DeJager: `1-200%32` |
+| Array | Tsai: `1-478%32`, DeJager: `1-200%32` |
 
 ## Troubleshooting
 

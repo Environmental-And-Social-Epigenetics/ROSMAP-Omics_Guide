@@ -1,223 +1,239 @@
 # Differential Expression Analysis
 
-Differential expression gene (DEG) analysis identifies genes whose expression differs between phenotype groups within individual cell types. The repository supports two DEG approaches, each used for a different phenotype:
+Differential expression gene (DEG) analysis identifies genes whose expression differs between phenotype
+groups within individual cell types. The repository implements DEG for two phenotypes, both using the
+**same pseudobulk + DESeq2** approach:
 
-| Approach | Phenotype | Method | Environment |
-|----------|-----------|--------|-------------|
-| [NEBULA](#ace-deg-pipeline-nebula) | ACE (Adverse Childhood Experiences) | Single-cell mixed model with random effects | `nebulaAnalysis7` |
-| [DESeq2/limma](#socisl-deg-pipeline-deseq2) | SocIsl (Social Isolation) | Traditional pseudobulk aggregation | `deg_analysis` |
+| Phenotype | Cohorts | Method | Environment |
+|-----------|---------|--------|-------------|
+| [ACE](#ace-deg-pipeline) (Adverse Childhood Experiences) | Tsai + DeJager | Pseudobulk aggregation → DESeq2 | `nebulaAnalysis7` (legacy name) |
+| [SocIsl](#socisl-deg-pipeline) (Social Isolation) | Tsai + DeJager | Pseudobulk aggregation → DESeq2 | `deg_analysis` |
+
+!!! warning "The environment name `nebulaAnalysis7` is legacy"
+    The ACE DEG conda environment is called `nebulaAnalysis7` and is referenced as `NEBULA_ENV` in
+    `config/paths.sh`, but **the pipeline does not use the NEBULA single-cell mixed-model framework** —
+    it runs DESeq2 on pseudobulk counts (`aceDegT.Rscript`). The name is a holdover from an earlier
+    design. The environment **is** created automatically by `setup/install_envs.sh --analysis` (built from
+    `envs/analysis/nebula/environment.yml`); you do not need to create it manually.
 
 ---
 
-## ACE DEG Pipeline (NEBULA)
+## ACE DEG Pipeline
 
-The ACE DEG pipeline uses NEBULA (Negative Binomial mixed models Using Latent variables for Adjusting), a mixed-model framework that operates at the single-cell level rather than requiring explicit pseudobulk aggregation. NEBULA fits a negative binomial model with random effects to handle the non-independence of cells within subjects and the zero-inflation common in single-cell data.
+The ACE DEG pipeline aggregates single cells into per-patient pseudobulk profiles and fits a DESeq2 model
+per cell type and sex. It is implemented for **both cohorts**: `Analysis/ACE/DEG/Tsai/` (driver) and
+`Analysis/ACE/DEG/DeJager/` (which `source()`s the Tsai R script, so the method is identical).
 
-### Why NEBULA Over Traditional Pseudobulk?
+### Why Pseudobulk DESeq2?
 
-Traditional pseudobulk methods (DESeq2, edgeR) collapse all cells per patient per cell type into a single count vector, discarding within-patient cell-level variation. NEBULA instead:
+Single-nucleus DE can be run at the single-cell level (e.g. mixed models) or by **pseudobulking** —
+summing each patient's raw counts within a cell type into one profile, then running a standard bulk
+RNA-seq test. This pipeline pseudobulks for several reasons:
 
-- Operates on **individual cell counts** with a mixed model, preserving single-cell resolution
-- Uses the **Hurdle-Logistic (HL)** method to handle zero-inflation in single-cell data
-- Incorporates **random effects** on batch or subject to account for non-independence without collapsing cells
-- Uses **edgeR TMM normalization offsets** (edgeR is used only for normalization, not the DE test)
+- **Correct unit of replication.** The biological replicate in ROSMAP is the *patient*, not the cell.
+  Treating thousands of cells from one donor as independent samples inflates significance
+  (pseudoreplication). Aggregating to one count vector per patient makes the donor the unit of analysis,
+  which is what bulk methods like DESeq2 assume.
+- **Well-calibrated and benchmarked.** Pseudobulk + DESeq2/edgeR is consistently among the best-calibrated
+  approaches in single-cell DE benchmarks, controlling false positives better than naive per-cell tests.
+- **Robust to ambient/technical noise.** Summing counts averages out per-cell dropout and residual
+  ambient signal before the test.
+
+Within-patient structure (sex, AD pathology) is handled by **stratifying** (separate models per sex) and
+by **covariates** (see the design formula), not by random effects.
 
 ### Scripts
 
-All scripts are located in `Analysis/ACE/DEG/Tsai/scripts/`:
+All scripts live directly in `Analysis/ACE/DEG/Tsai/` (there is **no** `scripts/` subdirectory):
 
-| Script | Purpose | Environment |
-|--------|---------|-------------|
-| `extract_obs.py` | Extract metadata from 83 GB h5ad via h5py (avoids loading full matrix) | `BATCHCORR_ENV` |
-| `preprocess_celltype_counts.py` | Build per-cell-type h5ad files with raw counts from singlet files | `BATCHCORR_ENV` |
-| `preprocess.sh` | SLURM orchestrator for both preprocessing steps | — |
-| `run_nebula_deg.Rscript` | Core NEBULA DEG analysis (R) | `NEBULA_ENV` |
-| `run_nebula.sh` | SLURM wrapper for a single NEBULA job | — |
-| `submit_all_jobs.sh` | Batch submission of all 816 SLURM jobs | — |
+| Script | Purpose |
+|--------|---------|
+| `prep_celltype_splits.py` | Split the annotated h5ad into per-cell-type raw-count h5ad files (run once per integration) |
+| `aceDegT.Rscript` | Core analysis: pseudobulk aggregation + DESeq2 per cell type × sex |
+| `run_deg.sh` | SLURM wrapper: `run_deg.sh <integration> <phenotype> [celltype]` |
+| `aceDegT.sh` | Batch launcher over phenotypes for a given integration |
+| `run_male_ad_models.sh` | Orchestrator for the male AD-confounding sensitivity arms (see [below](#ad-confounding-sensitivity-arms)) |
+| `smoke_test.sh` | Fixture-based smoke test (no protected data) |
+
+The DeJager equivalents are in `Analysis/ACE/DEG/DeJager/` (`aceDegDJ.Rscript`, `aceDegDJ.sh`,
+`run_deg.sh`); `aceDegDJ.Rscript` simply `source()`s `../Tsai/aceDegT.Rscript`.
 
 ### Analysis Dimensions
 
-The pipeline tests all combinations of the following dimensions, producing 816 total SLURM jobs:
+A single `aceDegT.Rscript` run is parameterized by **integration** and **phenotype**; it then iterates over
+**cell types** and **sex** *internally*. So the number of submitted jobs is small — roughly
+`integrations × phenotypes` — not a large cross-product.
 
-| Dimension | Values | Count |
-|-----------|--------|-------|
-| Traits | `early_hh_ses`, `tot_adverse_exp` | 2 |
-| Batch correction pipeline | `flowcell_batch`, `projid_batch` | 2 |
-| Trait encoding | `continuous`, `binary` | 2 |
-| AD covariate | `niareagansc`, `cogdx` | 2 |
-| Sex stratification | `all`, `female`, `male` | 3 |
-| Cell types | See [cell type table](#cell-types) below | 17 |
-| **Total** | 2 × 2 × 2 × 2 × 3 × 17 | **816** |
+| Dimension | Values | Where it varies |
+|-----------|--------|-----------------|
+| Integration (input h5ad) | Tsai: `derived_batch` (default), `projid`; DeJager: `library_id` | `--integration` arg (one job each) |
+| Phenotype | `tot_adverse_exp`, `early_hh_ses`, `ace_aggregate` | `--phenotype` arg (one job each) |
+| Sex | `Fem` (`msex==0`), `Male` (`msex==1`) | looped **inside** the R script |
+| Cell type | broad groups (`broad_Exc`, `broad_Inh`, glial) + individual subtypes | looped **inside** the R script (one h5ad per type) |
 
-#### Dimension Details
+A typical full ACE Tsai run is therefore **3 phenotypes × {derived_batch, projid} = 6** `aceDegT.Rscript`
+invocations (plus one `prep_celltype_splits.py` per integration); DeJager adds 3 more for `library_id`.
 
-**Traits:**
+#### Phenotype Encodings
 
-- `early_hh_ses` — Early household socioeconomic stress
-- `tot_adverse_exp` — Total adverse childhood experiences (count of 5 ACE components: emotional neglect, family separation, financial need, parental intimidation, parental violence)
+- `tot_adverse_exp` — total adverse childhood experiences (count of ACE components), used as a continuous
+  numeric covariate.
+- `early_hh_ses` — early household socioeconomic status, continuous.
+- `ace_aggregate` — a derived composite computed in the R script as
+  `scale(tot_adverse_exp) − scale(early_hh_ses)` (z-scored adversity minus z-scored SES).
 
-**Trait encoding:**
+#### Cell-Type Splitting (`prep_celltype_splits.py`)
 
-- `continuous` — Raw numeric value used directly
-- `binary`:
-    - `tot_adverse_exp`: >0 (exposed) vs. ==0 (not exposed)
-    - `early_hh_ses`: Above median vs. below median
-
-**Batch correction pipeline:**
-
-- `flowcell_batch` — Uses NEBULA random effect on `derived_batch` (flowcell-based groups, ~41 levels). This pipeline uses the annotated h5ad from the standard integration (`03_Integrated/`).
-- `projid_batch` — Uses NEBULA random effect on `projid` (subject ID, ~480 levels). This pipeline uses the alternate annotated h5ad from the projid-based integration (`03_Integrated_projid/`).
-
-**AD covariates:** Either `niareagansc` (NIA-Reagan neuropathological staging) or `cogdx` (clinical cognitive diagnosis) is included as a fixed-effect covariate to adjust for AD severity.
-
-**Sex stratification:**
-
-- `all` — Both sexes included; `msex` added as a fixed-effect covariate
-- `female` — Female subjects only (`msex == 0`); `msex` dropped from model
-- `male` — Male subjects only (`msex == 1`); `msex` dropped from model
-
-### Cell Types
-
-| Category | Cell Types |
-|----------|-----------|
-| Glial | Oli, Ast, Mic, Endo, OPC |
-| Excitatory neurons | Ex-L2/3, Ex-L4, Ex-L4/5, Ex-L5, Ex-L5/6, Ex-L5/6-CC, Ex-NRGN |
-| Inhibitory neurons | In-VIP, In-SST, In-PV (Basket), In-PV (Chandelier), In-Rosehip |
+`prep_celltype_splits.py` reads the annotated `tsai_annotated.h5ad` for the chosen integration and writes
+one raw-count `.h5ad` per cell type into `celltype_splits_<integration>/`. Subtypes are also grouped into
+broad classes for the high-level analysis: any `Ex-*` cell type maps to `broad_Exc`, any `In-*` to
+`broad_Inh`, and glial types (Oli, Ast, Mic, OPC, Endo, …) are carried through as-is. `aceDegT.Rscript`
+processes the `broad_*` files first, then the individual subtype files.
 
 ### Workflow
 
 ```mermaid
 graph LR
-    subgraph "Phase 1: Preprocessing (run once)"
-        A1[extract_obs.py] --> A2[preprocess_celltype_counts.py]
+    subgraph "Phase 1: Split (once per integration)"
+        A1[prep_celltype_splits.py] --> A2["celltype_splits/*.h5ad"]
     end
-    subgraph "Phase 2: NEBULA (816 jobs)"
-        B1[submit_all_jobs.sh] --> B2[run_nebula.sh]
-        B2 --> B3[run_nebula_deg.Rscript]
+    subgraph "Phase 2: DEG (per phenotype)"
+        B1["run_deg.sh integration phenotype"] --> B2[aceDegT.Rscript]
+        B2 --> B3["loop: cell type × sex → DESeq2"]
     end
     A2 --> B1
 ```
 
-#### Phase 1: Preprocessing
+For each cell type and each sex, `aceDegT.Rscript`:
 
-Run once via `preprocess.sh` to prepare per-cell-type count matrices for NEBULA.
-
-**Step 1 — Extract metadata** (`extract_obs.py`):
-
-Reads the annotated h5ad files (~83 GB each) using h5py to extract only the `obs` dataframe (cell_type, projid, derived_batch, sample_id, batch) and `var` names (HVG gene list) without loading the full expression matrix. Produces `obs.csv` and `var_names.csv`.
-
-This is run twice: once for the flowcell-batch annotated h5ad and once for the projid-batch annotated h5ad.
-
-**Step 2 — Build per-cell-type count matrices** (`preprocess_celltype_counts.py`):
-
-For each of the 17 cell types:
-
-1. Identifies annotated barcodes belonging to this cell type from `obs.csv`
-2. Iterates over per-sample singlet h5ad files in `02_Doublet_Removed/`
-3. Matches barcodes, extracts raw counts (sparse matrix)
-4. Combines across all samples into a single per-cell-type h5ad file
-5. Flags HVGs from the annotated h5ad's var list
-
-Outputs: `{CellType}_rawcounts.h5ad` files in `${TSAI_DEG_READY}/{flowcell_batch,projid_batch}/`
-
-#### Phase 2: NEBULA DEG
-
-**`submit_all_jobs.sh`** iterates over all 816 combinations, checks for existing results (`nebula_*.rda`), and submits SLURM jobs via `run_nebula.sh`. Supports `--dry-run` mode.
-
-Each job runs `run_nebula_deg.Rscript`, which:
-
-1. Loads the per-cell-type h5ad via `zellkonverter::readH5AD()`
-2. Loads and merges phenotype data (`${ACE_SCORES_CSV}`) by `projid`
-3. Filters by sex (if stratified)
-4. Drops cells with NA values in trait, age_death, or AD covariate
-5. Encodes the trait variable (continuous or binary)
-6. Sets up covariates: `age_death_scaled` (age at death / 10), AD covariate (numeric), optionally `msex_factor`
-7. Filters to HVGs and removes zero-count genes
-8. Sets the NEBULA random effect ID (`derived_batch` or `projid`)
-9. Converts to NEBULA format via `scToNeb()` and `group_cell()`
-10. Computes TMM normalization offsets via `edgeR::calcNormFactors()`
-11. Runs `nebula()` with `method = "HL"`
-12. Saves results and generates a volcano plot
+1. Loads the per-cell-type h5ad via `zellkonverter::readH5AD()` and renames the `X` assay to `counts`.
+2. Merges ACE phenotype data (`${ACE_SCORES_CSV}`) onto cells by `projid`; drops cells with no ACE score.
+3. Splits by sex (`msex == 0` / `== 1`); skips a stratum with `< 10` cells or `< 5` patients.
+4. **Pseudobulks** with `scran::aggregateAcrossCells(ids = projid)` — one summed count vector per patient.
+5. z-scales `age_death` and `pmi`; coerces `niareagansc` and the phenotype to numeric.
+6. Fits DESeq2 with the design formula below and extracts the phenotype coefficient via
+   `results(dds, name = phenotype)`.
+7. Saves the pseudobulk object (`pseudobulk_ACE_{sex}_{celltype}.rds`) and the DESeq2 result
+   (`deseqAnalysisACE_{phenotype}_{celltype}_{sex}.rda`).
 
 ### Statistical Model
 
 ```
-gene ~ trait_var + age_death_scaled + ad_covariate [+ msex_factor]
+~ age_death + pmi + <phenotype> + niareagansc
 
-Random effect:  derived_batch (flowcell pipeline) or projid (projid pipeline)
-Method:         NEBULA Hurdle-Logistic (HL)
-Normalization:  edgeR TMM offsets
-FDR control:    Benjamini-Hochberg
-Significance:   |logFC| > 0.6 AND padj < 0.1
+Aggregation:   scran::aggregateAcrossCells by projid (per-patient pseudobulk)
+Test:          DESeq2 (negative binomial GLM, Wald test on the phenotype coefficient)
+Stratified by: sex (Fem / Male run as separate models)
+FDR control:   Benjamini-Hochberg (DESeq2 default)
+Significance:  padj < 0.05
+```
+
+#### Why these covariates, and why stratify by sex?
+
+- `age_death` and `pmi` (post-mortem interval) are standard nuisance covariates in post-mortem brain DE —
+  both shift transcript abundance and degradation independent of the phenotype.
+- `niareagansc` (NIA-Reagan neuropathological AD score) adjusts for Alzheimer's pathology, so the phenotype
+  coefficient reflects the ACE association *over and above* AD burden.
+- **Sex is stratified, not modeled as a covariate**, because the ACE literature and prior ROSMAP work show
+  sex-specific effects; a single pooled model with `msex` as a covariate would assume the phenotype effect
+  is identical in both sexes. Separate `Fem`/`Male` models let the effect differ. (The dedicated
+  AD-confounding arms below extend this with male-specific AD-adjustment variants.)
+
+DESeq2 has **no random effects** in this code; non-independence of cells is removed by the pseudobulk step,
+and `padj < 0.05` is the sole significance threshold.
+
+### AD-Confounding Sensitivity Arms
+
+Because ACE and AD pathology are correlated, the male analysis is repeated under several AD-adjustment
+schemes to test whether ACE associations are robust to how AD is controlled. These arms are orchestrated by
+`run_male_ad_models.sh` and implemented as the `aceDegT_Male*` script variants (e.g. `MaleNoADadj`,
+`MaleContAD`, `MaleBinaryAD`, `MaleNiaReagan`, `MaleAncovaAD`, `MaleAceByAD`), each differing only in the AD
+term(s) in the design formula:
+
+```bash
+cd Analysis/ACE/DEG/Tsai
+bash run_male_ad_models.sh        # submits the male AD-adjustment arms per cell type
 ```
 
 ### How to Run
 
 ```bash
-# Source configuration
 source config/paths.sh
 
-# Phase 1: Preprocess (run once, ~12 hours)
-cd Analysis/ACE/DEG/Tsai/
-sbatch scripts/preprocess.sh
+# Phase 1 + 2 — build per-cell-type splits and submit all phenotypes for Tsai
+cd Analysis/ACE/DEG/Tsai
+sbatch aceDegT.sh
+# (or, for a single phenotype:)
+sbatch run_deg.sh derived_batch tot_adverse_exp
 
-# Phase 2: Submit all NEBULA jobs (816 jobs, ~5h each)
-bash scripts/submit_all_jobs.sh            # submit
-bash scripts/submit_all_jobs.sh --dry-run  # preview without submitting
+# DeJager (same method, library_id integration)
+cd ../DeJager
+sbatch aceDegDJ.sh
 ```
 
 ### Inputs
 
 | File | Path Variable | Description |
 |------|--------------|-------------|
-| Annotated h5ad (flowcell) | `${TSAI_INTEGRATED}/tsai_annotated.h5ad` | Flowcell-batch integrated (~83 GB) |
-| Annotated h5ad (projid) | `${TSAI_INTEGRATED_PROJID}/tsai_annotated.h5ad` | Projid-batch integrated (~83 GB) |
-| Singlet h5ad files | `${TSAI_DOUBLET_REMOVED}/{projid}_singlets.h5ad` | Per-sample raw counts from Stage 2 |
-| Phenotype CSV | `${ACE_SCORES_CSV}` | ACE trait scores for Tsai + DeJager patients |
-| Derived batches CSV | `${TSAI_DERIVED_BATCHES_CSV}` | Projid-to-flowcell-batch mapping |
+| Annotated h5ad | `${TSAI_INTEGRATED}/tsai_annotated.h5ad` (per integration) | Source for cell-type splitting |
+| Per-cell-type splits | `celltype_splits_<integration>/<celltype>.h5ad` | Raw counts per cell type (Phase 1 output) |
+| Phenotype CSV | `${ACE_SCORES_CSV}` | ACE trait scores keyed by `projid` |
 
 ### Outputs
 
-Results are organized by dimension: `Analysis/ACE/DEG/Tsai/{trait}/{pipeline}/{encoding}/{ad_covariate}/{sex}/`
+Results are written under `results_<integration>/<phenotype>/`:
 
 | File | Description |
 |------|-------------|
-| `nebula_{CellType}.rda` | Full NEBULA model object (R) |
-| `results_{CellType}.csv` | Per-gene results table |
-| `volcano_{CellType}.png` | Volcano plot with top 15 significant genes labeled |
+| `pseudobulk_ACE_{sex}_{celltype}.rds` | Per-patient pseudobulk `SingleCellExperiment` (inputs to DESeq2) |
+| `deseqAnalysisACE_{phenotype}_{celltype}_{sex}.rda` | DESeq2 `results()` object for the phenotype coefficient |
 
-**Results CSV columns:**
+Each `.rda` holds a standard DESeq2 results table. The key columns:
 
 | Column | Description |
 |--------|-------------|
-| `gene` | Gene symbol |
-| `logFC` | Log fold change for the trait coefficient |
-| `pval` | Nominal p-value |
-| `padj` | Benjamini-Hochberg adjusted p-value |
-| `neg_log10_pval` | −log10(pval), for plotting |
-| `sig` | Boolean: `|logFC| > 0.6` AND `padj < 0.1` |
+| `baseMean` | Mean normalized count across patients |
+| `log2FoldChange` | Effect of the phenotype on expression (per unit, log2 scale) |
+| `lfcSE` | Standard error of the log2 fold change |
+| `pvalue` | Wald-test nominal p-value |
+| `padj` | Benjamini-Hochberg adjusted p-value (significance at `padj < 0.05`) |
+
+Example rows from a DESeq2 result (one cell type, `tot_adverse_exp`, Male):
+
+```text
+gene      baseMean   log2FoldChange   lfcSE    pvalue     padj
+GENE_A     842.1        0.61           0.14    1.2e-05    0.0038   # significant
+GENE_B     310.7        0.29           0.16    6.4e-02    0.21     # marginal
+GENE_C    1204.5       -0.04           0.11    7.1e-01    0.95     # not significant
+```
+
+A positive `log2FoldChange` means expression rises with the phenotype value (here, more adverse
+experiences); the magnitude is per one-unit increase in the (scaled) phenotype.
 
 ### Resource Requirements
 
 | Phase | Script | Cores | Memory | Time |
 |-------|--------|-------|--------|------|
-| Preprocessing | `preprocess.sh` | 8 | 200 GB | 12 hours |
-| NEBULA (per job) | `run_nebula.sh` | 45 | 100 GB | up to 5 hours |
+| Split | `prep_celltype_splits.py` (via `aceDegT.sh`) | varies | high (reads ~80 GB h5ad) | a few hours |
+| DEG | `run_deg.sh` | 4 | 200 GB | up to 24 hours |
 
-!!! warning "NEBULA environment not in automated installer"
-    The `nebulaAnalysis7` conda environment required for DEG analysis is referenced in `config/paths.sh` as `NEBULA_ENV` but is **not** created by `setup/install_envs.sh --analysis`. The `Analysis/envs/deg.yml` spec installs DESeq2/edgeR/limma, not NEBULA. You must create the NEBULA environment manually with the following R packages: `nebula`, `edgeR`, `zellkonverter`, `SingleCellExperiment`, `dplyr`, `ggplot2`, `ggrepel`.
+!!! note "Very large cell types"
+    For the most abundant cell types, the per-cell-type h5ad can exceed R's sparse-matrix limit (2³¹
+    nonzeros). `aceDegT.Rscript` detects this, skips the type, and points to
+    `legacy/pseudobulk_broad_Exc.py` for a Python-side pseudobulk of those cases.
 
 ---
 
-## SocIsl DEG Pipeline (DESeq2)
+## SocIsl DEG Pipeline
 
-The Social Isolation phenotype uses a traditional pseudobulk approach with DESeq2, predating the NEBULA pipeline.
+The Social Isolation phenotype uses the same pseudobulk + DESeq2 approach, in `Analysis/SocIsl/DEG/`
+(Tsai and DeJager).
 
 ### Method
 
-1. Load the annotated AnnData object from Stage 3 of processing
-2. For each cell type, aggregate raw counts across all cells per patient using `scran::aggregateAcrossCells()`
-3. Fit a DESeq2 model with covariates
+1. Load the annotated AnnData object from Stage 3 of processing.
+2. For each cell type, aggregate raw counts across all cells per patient (pseudobulk).
+3. Fit a DESeq2 model with the design formula below.
 
 ### Design Formula
 
@@ -225,20 +241,13 @@ The Social Isolation phenotype uses a traditional pseudobulk approach with DESeq
 ~ age_death + pmi + social_isolation_avg + niareagansc
 ```
 
-Analysis is sex-stratified: female (`msex == 0`) and male (`msex == 1`) are run separately rather than including sex as a covariate.
-
-### Scripts
-
-Scripts are in `Analysis/SocIsl/DEG/Tsai/`:
-
-| Script | Purpose |
-|--------|---------|
-| `socIslDegT.Rscript` | Per-cell-type pseudobulk DEG via DESeq2 |
-| `socIslDegCT.sh` | SLURM wrapper |
+As in the ACE pipeline, analysis is **sex-stratified** (female `msex == 0` and male `msex == 1` run
+separately) rather than including sex as a covariate.
 
 ### Environment
 
-Uses `deg_analysis` (from `Analysis/envs/deg.yml`), which provides DESeq2, edgeR, limma, and scanpy.
+Uses `deg_analysis` (spec: `envs/analysis/deg/environment.yml`), which provides DESeq2, edgeR, limma, and
+scanpy.
 
 ### Resource Requirements
 
@@ -246,4 +255,4 @@ Uses `deg_analysis` (from `Analysis/envs/deg.yml`), which provides DESeq2, edgeR
 |-----------|-------|
 | Cores | 8 |
 | Memory | 64 GB |
-| Time | 1 to 2 hours |
+| Time | 1 to 2 hours (per cell type) |

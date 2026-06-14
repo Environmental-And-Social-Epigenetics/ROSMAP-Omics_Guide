@@ -23,8 +23,15 @@ cellranger count \
 |-----------|-------|-----------|
 | `--include-introns` | `true` | Critical for snRNA-seq. Nuclear RNA contains a large fraction of unspliced (intronic) reads. Without this flag, most informative reads are discarded. |
 | `--nosecondary` | (flag) | Skips Cell Ranger's built-in secondary analysis (clustering, t-SNE). The pipeline performs these steps separately with more control. |
-| `--r1-length` | `26` | Trims Read 1 to 26 bp. Library-specific; accommodates the barcode+UMI structure of these libraries. |
+| `--r1-length` | `26` | Trims Read 1 to 26 bp = the 10x 3′ v3 chemistry layout (16 bp cell barcode + 10 bp UMI). Other chemistries differ (e.g. v2 is 16+10 with a 26 bp R1 too, but earlier kits use 14+10); set this to match the kit. |
 | `--transcriptome` | `${CELLRANGER_REF}` | Path to the `refdata-gex-GRCh38-2020-A` reference. Configured in `config/paths.sh`. |
+
+!!! question "Why `--create-bam true` only for DeJager?"
+    The position-sorted BAM records each read's aligned position and the SNP alleles it covers, which
+    [Demuxlet](demuxlet.md) needs to match cells to patient genotypes. DeJager libraries are multiplexed, so
+    they require that genotype-based demultiplexing — and therefore the BAM. Tsai libraries are one patient
+    each (identity known from metadata), so the BAM is unnecessary and disabling it saves substantial disk
+    and time.
 
 ### Dataset-Specific Differences
 
@@ -154,6 +161,13 @@ Cell Ranger produces the following output structure for each sample:
 
 The `raw_feature_bc_matrix.h5` file is the primary output used by the next step (CellBender). It contains counts for all barcodes, including empty droplets, which CellBender needs to model the ambient RNA profile.
 
+!!! tip "Sanity-check `metrics_summary.csv`"
+    Before moving on, glance at each sample's `metrics_summary.csv` / `web_summary.html`. For snRNA-seq on
+    these libraries, expect roughly: Q30 bases in RNA read ≳ 90–95%, a clear knee in the barcode-rank plot,
+    and a median of ~2,000–3,000 genes per nucleus (lower than typical scRNA-seq, since nuclei carry less
+    mRNA). A collapsed barcode-rank knee or very low genes/nucleus usually signals a failed or low-input
+    library worth re-checking before CellBender.
+
 ## SLURM Resource Requirements
 
 === "DeJager"
@@ -171,12 +185,15 @@ The `raw_feature_bc_matrix.h5` file is the primary output used by the next step 
     | Parameter | Value |
     |-----------|-------|
     | Partition | `mit_preemptable` |
-    | Cores | 16 |
-    | Memory | 64 GB |
-    | Time | 2 days |
+    | Cores | 32 |
+    | Memory | 128 GB |
+    | Time | 47 hours |
     | Disk per patient | ~5-10 GB (no BAM) |
 
-    Jobs on `mit_preemptable` may be preempted by higher-priority jobs. The pipeline orchestrator handles this by automatically requeuing preempted jobs using SLURM's `--requeue` flag.
+    These are the values in `Config/cellranger_config.sh` (`CR_SLURM_CPUS=32`, `CR_SLURM_MEM=128G`,
+    `CR_SLURM_TIME=47:00:00`), which is the canonical execution config and overrides any older numbers in
+    the README. Jobs on `mit_preemptable` may be preempted by higher-priority jobs; the orchestrator
+    requeues them automatically via SLURM's `--requeue` flag.
 
 ## Known Patient Fixes (Tsai)
 

@@ -8,7 +8,7 @@ Stage 1 applies quality control filtering to each sample individually, removing 
 |-----------|-------|
 | Script | `01_qc_filter.py` |
 | SLURM wrapper | `01_qc_filter.sh` |
-| Conda environment | `QC_ENV` (spec: `envs/stage1_qc.yml`) |
+| Conda environment | `QC_ENV` (spec: `envs/processing/stage1_qc/environment.yml`) |
 | Job type | SLURM array (one task per sample) |
 
 ## Input
@@ -18,7 +18,7 @@ The input is the CellBender-filtered count matrix for each sample:
 === "Tsai"
 
     ```
-    ${TSAI_CELLBENDER}/{projid}/cellbender_output_filtered.h5
+    ${TSAI_CELLBENDER}/{projid}/processed_feature_bc_matrix_filtered.h5
     ```
 
 === "DeJager"
@@ -26,6 +26,9 @@ The input is the CellBender-filtered count matrix for each sample:
     ```
     ${DEJAGER_CELLBENDER}/{library}/processed_feature_bc_matrix_filtered.h5
     ```
+
+!!! warning "Tsai filename reconciliation required"
+    The Tsai integrated CellBender step writes `cellbender_output_filtered.h5`, but this script reads `processed_feature_bc_matrix_filtered.h5`. Apply the symlink workaround from [CellBender → Reconciling the Tsai filename for Stage 1](../preprocessing/cellbender.md#reconciling-the-tsai-filename-for-stage-1) before running, or Stage 1 will report no samples.
 
 ## QC Metrics
 
@@ -56,6 +59,12 @@ Fixed count thresholds (e.g., "remove cells with fewer than 200 genes") do not g
 
 The log1p transformation (`log(1 + x)`) stabilizes the variance of count and gene number distributions, which are typically right-skewed. This makes the percentile thresholds more robust.
 
+The same percentile *values* (4.5 / 96 / 5) are used for every sample, but the actual cutoffs are recomputed from each sample's own distribution. A shallowly sequenced sample and a deeply sequenced one therefore get different absolute count thresholds while receiving the same *relative* stringency — which is the point of percentile filtering.
+
+### Why an Upper Bound on Total Counts?
+
+The 96th-percentile cap on `log1p_total_counts` targets the opposite failure mode from the lower bound: cells (really droplets) with abnormally high total counts are usually **doublets or multiplets** — two or more nuclei captured together — or dense debris aggregates that survived CellBender. These inflate counts and gene numbers and would otherwise masquerade as a distinct high-expression "cell type." Removing the extreme upper tail here is a cheap first pass; the dedicated [doublet-removal](doublet-removal.md) stage that follows catches the doublets that fall *within* the normal count range.
+
 ### Why a 10% Hard Cap on Mitochondrial Percentage?
 
 High mitochondrial content is a well-established marker of cell stress and damage in single-cell RNA-seq. In postmortem brain tissue, some degree of mitochondrial RNA is expected, but cells exceeding 10% are very likely damaged. The 10% threshold is standard in the field for brain tissue snRNA-seq and provides a reliable upper bound that is less sensitive to sample-specific variation than a purely MAD-based approach.
@@ -69,6 +78,9 @@ For the DeJager dataset, Stage 1 also assigns patient IDs to cell barcodes befor
 - **Unmapped cells:** Cells without a patient ID mapping are dropped.
 
 This assignment step ensures that each cell in the output h5ad file has a known patient identity.
+
+!!! warning "DeJager: unmapped cells are dropped silently"
+    Cells whose barcodes have no Demuxlet patient assignment are removed **before** the QC filters run, so they never appear in `n_cells_before`. If a library's Demuxlet output is missing or incomplete, this can quietly discard most of its cells. Cross-check `cells_after` against the Cell Ranger / CellBender cell estimate for each library, and confirm `cell_to_patient_assignmentsFinal0.csv` covers every library before launching the array.
 
 ## Running Stage 1
 
@@ -122,12 +134,28 @@ The script produces `qc_summary.csv` in the output directory, which tracks per-s
 | Column | Description |
 |--------|-------------|
 | `sample_id` | Patient or library identifier |
-| `cells_before` | Number of cells in the CellBender input |
-| `cells_after` | Number of cells after QC filtering |
+| `n_cells_before` | Number of cells in the CellBender input |
+| `n_cells_after` | Number of cells after QC filtering |
+| `n_removed` | Cells removed (`n_cells_before − n_cells_after`) |
 | `pct_retained` | Percentage of cells retained |
-| `median_genes` | Median genes per cell (post-filter) |
-| `median_counts` | Median UMI counts per cell (post-filter) |
-| `median_pct_mt` | Median mitochondrial percentage (post-filter) |
+| `n_outlier` | Cells flagged by the count/gene percentile filters |
+| `n_mt_outlier` | Cells flagged by the mitochondrial-percentage filter |
+| `median_genes` | Median genes per cell (pre-filter, all cells) |
+| `median_counts` | Median UMI counts per cell (pre-filter, all cells) |
+| `median_pct_mt` | Median mitochondrial percentage (pre-filter, all cells) |
+
+(Header order matches `append_qc_summary()` in `01_qc_filter.py`. The `n_outlier` and `n_mt_outlier` counts can overlap — a cell can be both a count/gene outlier and an MT outlier — so they do not sum to `n_removed`.)
+
+A few rows of a representative `qc_summary.csv` look like:
+
+```csv
+sample_id,n_cells_before,n_cells_after,n_removed,pct_retained,n_outlier,n_mt_outlier,median_genes,median_counts,median_pct_mt
+10100574,8421,7765,656,92.2,512,201,3010,5180,1.84
+10100862,6190,5402,788,87.3,447,398,2740,4615,2.91
+20151388,4903,2987,1916,60.9,388,1620,2120,3380,6.72
+```
+
+The third row is a low-quality sample: a high `n_mt_outlier` drives most of its attrition, and its `median_pct_mt` is correspondingly elevated — exactly the pattern flagged under [Expected Results](#expected-results) below.
 
 ## Expected Results
 
@@ -144,4 +172,4 @@ The fraction of cells removed varies by sample quality, but typical expectations
 | Cores | 4 |
 | Memory | 32 GB |
 | Time | 12 hours |
-| Array | Tsai: `1-476%32`, DeJager: `1-200%32` |
+| Array | Tsai: `1-478%32`, DeJager: `1-200%32` |

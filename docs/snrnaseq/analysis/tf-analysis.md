@@ -1,9 +1,16 @@
-# Transcription Factor and Metabolic Analysis
+# Metabolic and Transcription Factor Analysis
 
-The `TF/` directory in the repository houses metabolic pathway analysis using COMPASS, which characterizes metabolic flux differences between phenotype groups at the single-cell level.
+This page covers two complementary analyses: **COMPASS** metabolic-flux analysis (in the `COMPASS/`
+directory) and **DoRothEA** transcription-factor activity (in the `TFActivity/` directory).
+
+!!! note "`TF/` was renamed to `COMPASS/`"
+    Metabolic analysis used to live in a `TF/` directory; it is now **`COMPASS/`**. Transcription-factor
+    activity is a separate, now-implemented **`TFActivity/`** directory. Any reference to `TF/` is stale.
 
 !!! info "Implementation status"
-    COMPASS metabolic analysis is implemented for the **SocIsl (Social Isolation)** phenotype with scripts and results for both Tsai and DeJager datasets. ACE and Resilient phenotypes have placeholder directories only. DoRothEA-based transcription factor activity analysis is planned but not yet implemented.
+    **COMPASS** metabolic analysis is implemented for **SocIsl** (Tsai + DeJager, with results) and **ACE**
+    (Tsai + DeJager, refactored `compassRun.sh` + `compass_analysis.py`). **TFActivity** (DoRothEA) is
+    implemented for **ACE** (Tsai, plus DeJager male arms). Only **Resilient** is a placeholder.
 
 ## COMPASS Metabolic Analysis
 
@@ -18,13 +25,25 @@ The analysis pipeline has two phases:
 
 ### Scripts
 
-Scripts are in `Analysis/SocIsl/TF/Tsai/`:
+The two cohorts organize COMPASS slightly differently:
 
-| Script | Purpose |
-|--------|---------|
-| `compassRunAstTsai.sh` | Main COMPASS SLURM wrapper for astrocytes |
-| `compassRun{CellType}{Sex}.sh` | Per-cell-type, per-sex COMPASS wrappers (20+ scripts) |
-| `compass_analysis.py` | Post-COMPASS statistical analysis |
+=== "SocIsl"
+
+    `Analysis/SocIsl/COMPASS/Tsai/` (and `DeJager/`) — the original layout, one wrapper per cell type × sex:
+
+    | Script | Purpose |
+    |--------|---------|
+    | `compassRun{CellType}{Sex}.sh` | Per-cell-type, per-sex COMPASS wrappers (e.g. `compassRunAstF.sh`, `compassRunExcM.sh`; 20+ scripts) |
+    | `compass_analysis.py` | Post-COMPASS statistical analysis |
+
+=== "ACE"
+
+    `Analysis/ACE/COMPASS/Tsai/` (and `DeJager/`) — a consolidated, refactored layout:
+
+    | Script | Purpose |
+    |--------|---------|
+    | `compassRun.sh` | Single parameterized COMPASS SLURM wrapper |
+    | `compass_analysis.py` | Post-COMPASS statistical analysis |
 
 ### COMPASS Execution
 
@@ -38,18 +57,28 @@ compass \
     --output-dir CompassP{Sex}{CellType}New
 ```
 
-The input TSV is a preprocessed gene expression matrix for the specified cell type and sex subset.
+The input TSV is a preprocessed gene expression matrix for the specified cell type and sex subset (`--num-processes` is typically 40, though a few cell-type scripts use 10).
+
+!!! question "What does COMPASS actually compute?"
+    COMPASS treats each cell's expression as evidence about which metabolic reactions are active. For every
+    reaction in a genome-scale human metabolic model (Human-GEM), it solves a **linear program** that finds
+    the flux distribution best supporting that reaction while penalizing reactions whose enzymes are weakly
+    expressed. The result is a per-cell **penalty score** per reaction — low penalty means the cell can
+    sustain high flux through that reaction. This is why the solver (IBM CPLEX) is required: there is one LP
+    per reaction per cell.
 
 ### Post-COMPASS Analysis (`compass_analysis.py`)
 
 After COMPASS completes, the Python analysis script:
 
-1. Loads COMPASS penalty scores and converts to reaction consistency scores (log scale)
-2. Performs Wilcoxon rank-sum tests per metabolic reaction between isolated and non-isolated groups
+1. Loads COMPASS penalty scores and converts them to reaction **consistency** scores via `−log(penalty + 1)`, so that higher = more active (the log stabilizes the heavy-tailed penalty distribution)
+2. Performs **Wilcoxon rank-sum** tests per metabolic reaction between phenotype groups (e.g. isolated vs. non-isolated)
 3. Computes Cohen's d effect sizes
 4. Applies FDR correction
 5. Clusters correlated reactions into meta-reactions using hierarchical clustering
-6. Maps results to named metabolic pathways (PGM, LDH, PDH, TPI, FACOAL, etc.)
+6. Maps results to named metabolic pathways (PGM = phosphoglycerate mutase, LDH = lactate dehydrogenase, PDH = pyruvate dehydrogenase, TPI = triosephosphate isomerase, FACOAL = fatty-acid-CoA ligase, etc.)
+
+A non-parametric **Wilcoxon** test is used (rather than a t-test) because the consistency scores are bounded and non-normal, so rank-based testing is more robust to their skew and to outlier cells.
 
 ### Cell Types
 
@@ -66,7 +95,7 @@ Each cell type is run separately for female and male subjects.
 
 ### Environment
 
-Uses `compass_analysis` (from `Analysis/envs/compass.yml`):
+Uses `compass_analysis` (spec: `envs/analysis/compass/environment.yml`):
 
 - Python >= 3.10
 - COMPASS package
@@ -87,20 +116,44 @@ Uses `compass_analysis` (from `Analysis/envs/compass.yml`):
 
 | Parameter | Value |
 |-----------|-------|
-| Cores | 40 |
+| Cores | 40 (most cell-type scripts; a few use 10) |
 | Memory | 600 GB |
 | Time | 24 hours |
 | Partition | High-memory nodes required |
 
+!!! warning "IBM CPLEX must be on PATH"
+    If `compass` aborts immediately with a solver error, CPLEX is not visible. Confirm
+    `CPLEX_STUDIO_DIR` is set and the CPLEX binary is on `PATH` *inside* the job (export it in the SLURM
+    script, not just your login shell).
+
 ---
 
-## DoRothEA Transcription Factor Activity (Planned)
+## TFActivity: DoRothEA Transcription Factor Activity
 
-DoRothEA-based TF activity analysis is planned for future phenotypes but not yet implemented. DoRothEA is a curated resource of TF-target interactions compiled from ChIP-seq, TF binding motifs, gene expression, and literature. For each cell, it computes a TF activity score by aggregating the expression of the TF's target genes, producing a cells-by-TFs activity matrix.
+DoRothEA-based TF activity analysis **is implemented for ACE** (`Analysis/ACE/TFActivity/Tsai/`, plus a
+DeJager male-arms variant). DoRothEA is a curated resource of TF–target interactions compiled from
+ChIP-seq, TF binding motifs, inferred regulons, and literature. For each cell, it computes a TF activity
+score by aggregating the (signed) expression of each TF's target genes, producing a cells-by-TFs activity
+matrix that can then be tested for phenotype association — paralleling the DEG/GSEA workflow but at the
+level of regulators rather than genes or pathways.
+
+### Scripts
+
+`Analysis/ACE/TFActivity/Tsai/`:
+
+| Script | Purpose |
+|--------|---------|
+| `tf_activity_analysis.py` | Compute DoRothEA TF activity and test phenotype association |
+| `run_tf_activity.sh` | SLURM wrapper |
+| `aceTfActT.sh`, `aceTfActT_male_arms.sh` | Batch launchers (incl. male AD-confounding arms) |
+| `tf_activity_visualize.py`, `tf_convergence_analysis.py` | Plotting and convergence diagnostics |
 
 ### Relationship to Other Analyses
 
-- **DEG** identifies which genes change expression, but does not explain why.
-- **COMPASS** identifies metabolic pathway differences associated with the phenotype.
-- **DoRothEA** (when implemented) would identify which transcription factors are likely driving expression changes, based on curated prior knowledge.
-- **SCENIC** discovers regulatory networks de novo from the data, without relying on prior knowledge databases.
+- **DEG** identifies *which genes* change expression, but not *why*.
+- **GSEA** groups those changes into pathways.
+- **COMPASS** identifies *metabolic* pathway differences associated with the phenotype.
+- **TFActivity (DoRothEA)** identifies which transcription factors likely drive the expression changes,
+  using **curated prior knowledge**.
+- **SCENIC** discovers regulatory networks **de novo** from the data, without prior-knowledge databases —
+  the data-driven counterpart to DoRothEA.

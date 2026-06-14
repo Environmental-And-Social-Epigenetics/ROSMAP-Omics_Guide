@@ -37,17 +37,31 @@ snRNA-seq captures the transcriptional state of each cell type in the brain (neu
 
 Nuclear RNA has a different composition than cytoplasmic RNA. Because snRNA-seq captures RNA from the nucleus before most splicing is complete, a substantial fraction of reads map to intronic regions rather than exons. The Cell Ranger flag `--include-introns true` counts these intronic reads, significantly increasing the number of detected genes and UMIs per nucleus. Without this flag, a large portion of genuinely informative reads would be discarded, reducing statistical power for all downstream analyses.
 
+```text
+        pre-mRNA in the nucleus (what snRNA-seq captures)
+  5'─[ exon1 ]──intron──[ exon2 ]────intron────[ exon3 ]─3'
+       ▲  reads land across exons AND introns  ▲
+
+  --include-introns true  → count exonic + intronic reads  → most reads usable
+  --include-introns false → count exonic reads only         → intronic reads discarded
+```
+
 ## Why CellBender for Ambient RNA Removal?
 
 During nucleus isolation, some RNA leaks out of damaged or lysed cells into the surrounding solution. This ambient RNA is then captured in droplets alongside intact nuclei, contaminating every cell's expression profile with a background signal that reflects the overall tissue composition rather than the individual cell's identity.
 
-CellBender uses a deep generative model to distinguish true cell-associated RNA from this ambient background. Without ambient RNA correction:
+CellBender uses a deep generative model (a variational autoencoder) to distinguish true cell-associated RNA from this ambient background. The key idea is that **ambient RNA is roughly uniform across all droplets** — it reflects the tissue's average composition — while **cell-associated RNA varies from barcode to barcode**. By learning this shared ambient profile from the many empty droplets and subtracting a per-barcode estimate of it, CellBender sets an *adaptive* threshold for each droplet rather than one global cutoff, which preserves sensitivity for rare cell types that a blunt subtraction would erase. Without ambient RNA correction:
 
 - Cell type markers "bleed" across cell types. For example, neuronal markers appear in non-neuronal cells, obscuring genuine cell type boundaries.
 - Differential expression results can be confounded by ambient contamination levels rather than true biological differences.
 - Clustering and cell type annotation become less accurate, with increased misclassification.
 
-The pipeline uses `--fpr 0` (or `0.01`) for a stringent false positive rate, aggressively removing ambient signal at the cost of potentially removing a small amount of true signal. This tradeoff is appropriate for downstream analyses that depend on clean cell type separation.
+The false-positive rate (`--fpr`) controls how aggressively ambient signal is removed. The **Tsai integrated**
+step uses `--fpr 0.01` (`cellranger_config.sh: CB_FPR=0.01`); **DeJager** and the separate **Tsai
+`03_Cellbender`** pipeline use `--fpr 0` (`cellbender_config.sh: CB_FPR=0`). The most aggressive setting
+(`0`) is chosen where cleanliness matters most — notably DeJager, whose multiplexed libraries must be
+demultiplexed by genotype, a step that residual ambient RNA degrades. These low settings trade a small
+amount of true signal for clean cell-type separation, which downstream clustering and DE depend on.
 
 ## Why Percentile-Based QC Filtering?
 
@@ -55,7 +69,7 @@ After ambient RNA removal, individual cells must be filtered to remove low-quali
 
 ### Why percentiles instead of MAD?
 
-Percentile thresholds provide stable cutoffs regardless of distribution shape, avoiding the assumption of approximate normality that MAD-based methods require. In single-cell data, QC metric distributions often have heavy tails (from doublets, debris, or highly variable cell types), which can distort MAD estimates. Fixed percentile thresholds are simpler to interpret and reproduce across datasets.
+Percentile thresholds provide stable cutoffs regardless of distribution shape, avoiding the assumption of approximate normality that MAD-based methods require. In single-cell data, QC metric distributions often have heavy tails, and those tails are *biological/technical*, not noise: **doublets** (two nuclei in one droplet) inflate both total counts and gene number, while **debris and empty droplets** deflate them, and genuinely large or transcriptionally active cell types sit far from the median. A MAD estimate computed over such a distribution is itself pulled by the very outliers it is meant to flag. Fixed percentile thresholds sidestep this — they are robust to rare extremes, make no normality assumption, and reproduce identically across datasets of different depth.
 
 ### What is filtered?
 
@@ -77,7 +91,7 @@ Harmony addresses this by iteratively adjusting the PCA embedding so that cells 
 
 - **Operates on the PCA embedding only.** The raw count matrix is not modified, preserving original expression values for downstream differential expression analysis.
 - **Scalable.** Harmony handles hundreds of thousands of cells efficiently, which is necessary for the combined Tsai dataset (480 patients).
-- **Configurable.** The batch variable and correction strength (`theta`) are adjustable via command-line arguments.
+- **Configurable.** The batch variable and correction strength (`theta`) are adjustable via command-line arguments. The pipeline default is `theta = 2.0` (`config/pipeline.yaml`): higher `theta` enforces stronger batch mixing, lower `theta` preserves more of the original structure. The default sits in the middle — enough to dissolve flowcell-level technical batch effects while retaining the genuine patient-to-patient variation that pseudobulk differential expression needs.
 
 ### The Batch Variable: `derived_batch`
 
@@ -86,6 +100,21 @@ Choosing the correct batch variable is critical. Using patient ID (`projid`) as 
 The computational batch groupings in `patient_metadata.csv` (values 1-16) are also unsuitable, as these are arbitrary SLURM scheduling groups that do not reflect actual technical variation.
 
 Instead, the pipeline uses `derived_batch`, produced by the `derive_batches.py` script. This script extracts Illumina flowcell IDs from FASTQ headers and groups samples by shared flowcells, yielding approximately 41 natural batch groups for the Tsai dataset. These groups reflect actual technical variation (samples sequenced on the same flowcell share reagent lots, instruments, and handling conditions) and are the appropriate covariate for batch correction.
+
+The resulting `derived_batches.csv` simply maps each sample to its flowcell-based batch label; samples that
+were re-sequenced across two flowcells get a combined label:
+
+```csv
+projid,derived_batch
+10100574,FC_HVNML
+10100862,FC_HVNML
+20151388,FC_HVNML+FC_J2KPT
+```
+
+!!! note "DeJager uses `library_id`, not `derived_batch`"
+    The same reasoning leads to a different default for DeJager: because its libraries are multiplexed,
+    `library_id` (~127 groups) is the finest grouping that still pools multiple patients, so it is the
+    canonical Harmony key there. `derived_batch` and `patient_id` are available as sensitivity variants.
 
 The batch variable is configurable via the `--harmony-batch-key` argument to `03_integration_annotation.py`, allowing comparison between correction strategies.
 
